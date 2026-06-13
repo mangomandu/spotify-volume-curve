@@ -1,0 +1,88 @@
+using System.Drawing.Drawing2D;
+
+namespace SpotifyLinearVolume;
+
+/// <summary>A row of rounded "pill" buttons for picking a curve preset. Active pill = green.</summary>
+public sealed class PresetBar : Panel
+{
+    private static readonly Color Accent = Color.FromArgb(30, 215, 96);
+
+    private readonly string[] _labels;
+    private int _active = -1;
+    private int _hover = -1;
+
+    public event Action<int>? PresetSelected;
+
+    public PresetBar(string[] labels)
+    {
+        _labels = labels;
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        BackColor = Color.FromArgb(20, 20, 20);
+        Cursor = Cursors.Hand;
+    }
+
+    public void SetActive(int index)
+    {
+        if (_active == index) return;
+        _active = index;
+        Invalidate();
+    }
+
+    private int IndexAt(int x)
+    {
+        if (_labels.Length == 0) return -1;
+        return Math.Clamp(x * _labels.Length / Math.Max(1, Width), 0, _labels.Length - 1);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        int i = IndexAt(e.X);
+        if (i >= 0) PresetSelected?.Invoke(i);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        int h = IndexAt(e.X);
+        if (h != _hover) { _hover = h; Invalidate(); }
+    }
+
+    protected override void OnMouseLeave(EventArgs e) { _hover = -1; Invalidate(); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        int n = _labels.Length;
+        if (n == 0) return;
+
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        float w = (float)Width / n;
+        using var font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+
+        for (int i = 0; i < n; i++)
+        {
+            var cell = new RectangleF(i * w + 3, 2, w - 6, Height - 4);
+            bool active = i == _active;
+            Color bg = active ? Accent : i == _hover ? Color.FromArgb(50, 50, 50) : Color.FromArgb(36, 36, 36);
+            using (var path = Rounded(cell, 7))
+            using (var b = new SolidBrush(bg))
+                g.FillPath(b, path);
+
+            using var tb = new SolidBrush(active ? Color.FromArgb(12, 12, 12) : Color.FromArgb(205, 205, 205));
+            g.DrawString(_labels[i], font, tb, cell, fmt);
+        }
+    }
+
+    private static GraphicsPath Rounded(RectangleF r, float radius)
+    {
+        var p = new GraphicsPath();
+        float d = radius * 2;
+        p.AddArc(r.Left, r.Top, d, d, 180, 90);
+        p.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        p.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+}
