@@ -12,14 +12,16 @@ public sealed class TrayAppContext : ApplicationContext
 
     // gain = position ^ p.  p<1 = loud/responsive low end, gentle top.
     // p=1 = linear (proportional).  p>1 = quiet low end, fine low-volume control.
+    // We now drive Spotify's OWN volume slider (= position^p), so Spotify's top-heavy curve is
+    // applied on top. Smaller p boosts the low end to compensate it; p=1 sends Spotify's raw curve.
+    // These are a starting estimate — fine-tune by feel.
     private readonly (string Label, float P)[] _presets =
     {
-        ("강하게 (0.35)", 0.35f),
-        ("균형 (0.5)", 0.5f),
-        ("약하게 (0.7)", 0.7f),
-        ("리니어 (1.0)", 1.0f),
-        ("스포티파이에 가깝게 (1.5)", 1.5f),
-        ("스포티파이 기본 (2.0)", 2.0f),
+        ("강하게 (0.2)", 0.2f),
+        ("균형 (0.3)", 0.3f),
+        ("약하게 (0.45)", 0.45f),
+        ("은은하게 (0.65)", 0.65f),
+        ("보정 없음 (1.0)", 1.0f),
     };
 
     private readonly AppSettings _settings = SettingsStore.Load();
@@ -224,7 +226,7 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(_startupItem);
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("ℹ Spotify 자체 볼륨은 100%로 두세요") { Enabled = false });
+        menu.Items.Add(new ToolStripMenuItem("ℹ Spotify 볼륨을 직접 조절합니다 (폰·기기 동기화)") { Enabled = false });
         menu.Items.Add(new ToolStripMenuItem("종료", null, (_, _) => Exit()));
 
         return menu;
