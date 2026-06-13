@@ -26,7 +26,6 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly VolumeModel _model;
     private readonly HotkeyManager _hotkeys = new();
-    private readonly OsdForm _osd = new();
     private readonly ControlPanelForm _panel;
     private readonly OverlayBarForm _overlay;
 
@@ -245,9 +244,8 @@ public sealed class TrayAppContext : ApplicationContext
         }
 
         RefreshTrayUi();
-        // OSD is the feedback channel when the panel is closed; the panel shows its own readout.
-        if (!_panel.Visible)
-            _osd.Flash($"Spotify  {_model.Position * 100:0}%", _model.Position);
+        // Feedback lives in the tray tooltip, the overlay/dock bar, and the hover popup's % —
+        // no center-screen OSD flash on volume changes.
     }
 
     private void RefreshTrayUi()
@@ -271,7 +269,6 @@ public sealed class TrayAppContext : ApplicationContext
             _tray.Dispose();
             _hotkeys.Dispose();
             _model.Dispose();
-            _osd.Dispose();
             _panel.Dispose();
             _overlay.Dispose();
         }
