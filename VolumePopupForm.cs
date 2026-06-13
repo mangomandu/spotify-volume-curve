@@ -91,6 +91,10 @@ public sealed class VolumePopupForm : Form
         Location = new Point(x, y);
 
         if (!Visible) Show();
+        // The overlay we hover sits just above Spotify; this popup is drawn over Spotify's window
+        // area, so it must clear Spotify in the z-order too or it renders behind it (invisible).
+        // Raise to the top without stealing focus.
+        SetWindowPos(Handle, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     /// <summary>True while the cursor is over the popup (so the hover owner keeps it open).</summary>
@@ -109,4 +113,8 @@ public sealed class VolumePopupForm : Form
     }
 
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    private static readonly IntPtr HWND_TOP = IntPtr.Zero;
+    private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010;
 }

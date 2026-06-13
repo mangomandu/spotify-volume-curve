@@ -18,8 +18,8 @@ public sealed class TrayAppContext : ApplicationContext
         ("균형 (0.5)", 0.5f),
         ("약하게 (0.7)", 0.7f),
         ("리니어 (1.0)", 1.0f),
-        ("저음 조용 (1.5)", 1.5f),
-        ("저음 더 조용 (2.0)", 2.0f),
+        ("스포티파이에 가깝게 (1.5)", 1.5f),
+        ("스포티파이 기본 (2.0)", 2.0f),
     };
 
     private readonly AppSettings _settings = SettingsStore.Load();
@@ -57,12 +57,6 @@ public sealed class TrayAppContext : ApplicationContext
             SettingsStore.Save(_settings);
         };
         _panel.ApplyClientSize(new Size(_settings.PanelWidth, _settings.PanelHeight));
-        _panel.SetCollapsed(_settings.Collapsed);
-        _panel.CollapsedChanged += c =>
-        {
-            _settings.Collapsed = c;
-            SettingsStore.Save(_settings);
-        };
         _panel.PanelBoundsChanged += size =>
         {
             _settings.PanelWidth = size.Width;

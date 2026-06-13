@@ -12,7 +12,6 @@ public sealed class AppSettings
     public int DockOffsetY { get; set; }
     public int PanelWidth { get; set; }
     public int PanelHeight { get; set; }
-    public bool Collapsed { get; set; }
     public bool OverlayOnVolume { get; set; }
     public bool OverlayPopup { get; set; } = true; // hover the overlay → roomy fly-out slider above the playbar
 }

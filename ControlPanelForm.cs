@@ -4,42 +4,36 @@ using System.Runtime.InteropServices;
 namespace SpotifyLinearVolume;
 
 /// <summary>
-/// Borderless rounded control window. Expanded: curve graph + %/dB readout + preset pills.
-/// Collapsed: a slim volume bar. Optionally docks just above the Spotify window and follows
-/// it smoothly via a window-move event hook (no polling, so it keeps up with any refresh rate).
+/// Borderless rounded control window: curve graph + %/dB readout + preset pills. Optionally docks
+/// just above the Spotify window and follows it smoothly via a window-move event hook (no polling,
+/// so it keeps up with any refresh rate).
 /// </summary>
 public sealed class ControlPanelForm : Form
 {
     private static readonly Color Bg = Color.FromArgb(20, 20, 20);
     private static readonly Color Accent = Color.FromArgb(30, 215, 96);
     private const int HeaderH = 42;
-    private const int CollapsedH = 34;
-    private const int CollapsedW = 184;
 
     private readonly VolumeModel _model;
     private readonly (string Label, float P)[] _presets;
 
     private readonly CurveGraphPanel _graph = new();
     private readonly PresetBar _presetBar;
-    private readonly VolumeBar _bar = new();
     private readonly Label _close = new();
-    private readonly Label _collapseBtn = new();
 
     private readonly System.Windows.Forms.Timer _presenceTimer = new() { Interval = 250 };
     private readonly WinEventProc _winEventProc;
     private IntPtr _winEventHook;
     private uint _hookedPid;
 
-    private bool _dockMode, _userHidden, _userDragging, _hasAnchor, _collapsed;
+    private bool _dockMode, _userHidden, _userDragging, _hasAnchor;
     private IntPtr _spotifyHwnd;
     private uint _spotifyPid;
     private Point? _dockOffset;
     private Point _lastAnchor;
-    private Size _expandedSize = new(300, 320);
 
     public event Action<Point>? DockOffsetChanged;
     public event Action<Size>? PanelBoundsChanged;
-    public event Action<bool>? CollapsedChanged;
 
     public ControlPanelForm(VolumeModel model, (string Label, float P)[] presets)
     {
@@ -59,9 +53,6 @@ public sealed class ControlPanelForm : Form
         ForeColor = Color.White;
         ShowInTaskbar = false;
 
-        SetupHeaderButton(_collapseBtn, "▾", ClientSize.Width - 60);
-        _collapseBtn.Click += (_, _) => ToggleCollapsed();
-
         SetupHeaderButton(_close, "✕", ClientSize.Width - 34);
         _close.Click += (_, _) => { _userHidden = true; Hide(); };
 
@@ -73,16 +64,9 @@ public sealed class ControlPanelForm : Form
         _presetBar.SetBounds(14, ClientSize.Height - 38, ClientSize.Width - 28, 30);
         _presetBar.PresetSelected += i => _model.SetP(_presets[i].P);
 
-        _bar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        _bar.SetBounds(16, 50, ClientSize.Width - 32, 28);
-        _bar.Visible = false;
-        _bar.PositionPicked += pos => _model.SetPosition(pos);
-
-        Controls.Add(_collapseBtn);
         Controls.Add(_close);
         Controls.Add(_graph);
         Controls.Add(_presetBar);
-        Controls.Add(_bar);
 
         _presenceTimer.Tick += (_, _) => PresenceTick();
 
@@ -119,58 +103,11 @@ public sealed class ControlPanelForm : Form
         try { int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, sizeof(int)); } catch { /* Win10: no-op */ }
     }
 
-    // ----- collapse / expand -----
-    private void ToggleCollapsed()
-    {
-        SetCollapsed(!_collapsed);
-        CollapsedChanged?.Invoke(_collapsed);
-    }
-
-    public void SetCollapsed(bool collapsed)
-    {
-        _collapsed = collapsed;
-        _collapseBtn.Text = collapsed ? "▴" : "▾";
-        if (collapsed)
-        {
-            if (ClientSize.Height > CollapsedH) _expandedSize = ClientSize;
-            _graph.Visible = false;
-            _presetBar.Visible = false;
-            _bar.Visible = true;
-            _collapseBtn.Top = 5;
-            _close.Top = 5;
-            MinimumSize = new Size(CollapsedW, CollapsedH);
-            MaximumSize = new Size(CollapsedW, CollapsedH); // lock the compact size
-            ClientSize = new Size(CollapsedW, CollapsedH);
-            // set bounds AFTER the resize so the Left+Right anchor doesn't squish the bar width
-            _bar.SetBounds(18, 6, CollapsedW - 18 - 60, 22);
-        }
-        else
-        {
-            _bar.Visible = false;
-            _graph.Visible = true;
-            _presetBar.Visible = true;
-            _collapseBtn.Top = 9;
-            _close.Top = 9;
-            MaximumSize = Size.Empty;
-            MinimumSize = new Size(260, 280);
-            ClientSize = _expandedSize.Height >= 280 ? _expandedSize : new Size(300, 320);
-        }
-        Invalidate();
-    }
-
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
         g.Clear(Bg);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-
-        if (_collapsed)
-        {
-            using var grip = new SolidBrush(Color.FromArgb(110, 110, 110));
-            g.FillEllipse(grip, 8, Height / 2 - 5, 3, 3);
-            g.FillEllipse(grip, 8, Height / 2 + 2, 3, 3);
-            return; // collapsed: just the slim bar + buttons, no header chrome
-        }
 
         using (var path = Rounded(new RectangleF(16, 14, 13, 13), 3))
         using (var lb = new SolidBrush(Accent))
@@ -182,8 +119,6 @@ public sealed class ControlPanelForm : Form
         Color dot = _model.SessionFound ? Accent : Color.FromArgb(225, 185, 80);
         using (var dbr = new SolidBrush(dot))
             g.FillEllipse(dbr, Width - 84, 16, 9, 9);
-
-        if (_collapsed) return;
 
         float gain = _model.Gain;
         double db = gain > 0 ? 20 * Math.Log10(gain) : double.NegativeInfinity;
@@ -208,14 +143,13 @@ public sealed class ControlPanelForm : Form
         if (IsDisposed) return;
         _presetBar.SetActive(Array.FindIndex(_presets, x => Math.Abs(x.P - _model.P) < 0.001f));
         _graph.Set(_model.P, _model.Position);
-        _bar.Set(_model.Position);
         Invalidate();
     }
 
     // ----- docking -----
     public void SetDockOffset(Point? offset) => _dockOffset = offset;
     public void ResetDockOffset() => _dockOffset = null;
-    public void ApplyClientSize(Size size) { if (size.Width > 0 && size.Height > 0) { _expandedSize = size; if (!_collapsed) ClientSize = size; } }
+    public void ApplyClientSize(Size size) { if (size.Width > 0 && size.Height > 0) ClientSize = size; }
 
     public void SetDockMode(bool on)
     {
@@ -335,7 +269,7 @@ public sealed class ControlPanelForm : Form
                 _dockOffset = new Point(Left - _lastAnchor.X, Top - _lastAnchor.Y);
                 DockOffsetChanged?.Invoke(_dockOffset.Value);
             }
-            if (!_collapsed) PanelBoundsChanged?.Invoke(ClientSize);
+            PanelBoundsChanged?.Invoke(ClientSize);
         }
         base.WndProc(ref m);
     }
@@ -345,8 +279,6 @@ public sealed class ControlPanelForm : Form
         const int grip = 6;
         const int HTCLIENT = 1, HTCAPTION = 2, HTLEFT = 10, HTRIGHT = 11, HTTOP = 12,
                   HTTOPLEFT = 13, HTTOPRIGHT = 14, HTBOTTOM = 15, HTBOTTOMLEFT = 16, HTBOTTOMRIGHT = 17;
-        if (_collapsed)
-            return p.X < 18 ? HTCAPTION : HTCLIENT; // drag by the left grip
         {
             bool l = p.X < grip, r = p.X >= ClientSize.Width - grip, t = p.Y < grip, b = p.Y >= ClientSize.Height - grip;
             if (t && l) return HTTOPLEFT;
