@@ -50,6 +50,9 @@ public sealed class VolumeModel : IDisposable
         _pushThread.Start();
     }
 
+    private const int UserCooldownMs = 400; // after you move a slider, ignore the external poll briefly so it can't fight the drag
+    private volatile int _lastUserTick;
+
     public void Nudge(float delta) => SetPosition(Position + delta);
 
     public void SetPosition(float position)
@@ -76,6 +79,7 @@ public sealed class VolumeModel : IDisposable
     // UI-Automation write to Spotify's slider can never stutter the overlay/popup while you drag.
     private void Apply()
     {
+        _lastUserTick = Environment.TickCount;
         Changed?.Invoke();
         lock (_pushGate) { _pushTarget = Gain; _pushPending = true; }
         _pushSignal.Set();
@@ -116,6 +120,7 @@ public sealed class VolumeModel : IDisposable
     public void PumpExternal()
     {
         lock (_pushGate) { if (_pushPending) return; } // a write we just queued wins over a stale reading
+        if (Environment.TickCount - _lastUserTick < UserCooldownMs) return; // don't let the poll fight a fresh drag
         float g = _externalGain;
         if (g < 0f || Math.Abs(g - Gain) <= SyncEpsilon) return; // nothing polled yet, or already matches us
         Position = VolumeCurve.PositionFromGain(g, P);
