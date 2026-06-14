@@ -90,9 +90,12 @@ public sealed class VolumeBar : Control
             using (var fill = new Pen(Accent, 4f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
                 g.DrawLine(fill, x0, y, kx, y);
 
-        // Plain white knob (no green ring) so it matches Spotify's own knob and the fill ends exactly
-        // where Spotify's does.
+        // White knob with a thin Spotify-green ring — a small but clear "Volumify is active" marker so
+        // the overlay is recognisable next to Spotify's own (plain white) knob at a glance. The fill
+        // still ends exactly at the knob centre, where Spotify's does.
         using (var dot = new SolidBrush(Color.White))
             g.FillEllipse(dot, kx - KnobR, y - KnobR, 2 * KnobR, 2 * KnobR);
+        using (var ring = new Pen(Accent, 1.8f))
+            g.DrawEllipse(ring, kx - KnobR - 1.6f, y - KnobR - 1.6f, 2 * KnobR + 3.2f, 2 * KnobR + 3.2f);
     }
 }
