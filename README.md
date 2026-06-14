@@ -42,7 +42,7 @@ You see one slider; the app remaps it. Move it to position `x` (0–1) and it se
 gain = x ^ p
 ```
 
-Spotify's built‑in curve is **top‑heavy** (≈ `x⁴` — the bottom half is barely audible and the top ~20% does most of the work), so a `p` **below 1** flattens it: the low slider positions get lifted until the whole slider is usable. **`p ≈ 0.4` makes the perceived loudness track the slider evenly**; `p = 1` leaves Spotify's raw top‑heavy feel; higher `p` only makes it worse. Pick by feel from the tray or the panel's **live curve graph**:
+Spotify's built‑in curve is **top‑heavy** (≈ `x⁴`): park the slider at the half‑way point and you only *hear* about **19%**. A `p` **below 1** flattens that out — it lifts the low end so the whole slider becomes usable. At **`p ≈ 0.4`** the half‑way point sounds like **~50%**, so loudness tracks right where you put the slider; `p = 1` is Spotify's raw top‑heavy default, and higher only makes it worse. Pick by feel from the tray or the panel's **live curve graph**:
 
 <div align="center"><img src="assets/curve.png" width="640" alt="A power curve flattening Spotify's top-heavy response so the whole slider becomes usable"></div>
 
@@ -61,9 +61,9 @@ Spotify's built‑in curve is **top‑heavy** (≈ `x⁴` — the bottom half is
 - 🔁 **Two‑way sync** — move Spotify's own slider (or a media key, or your phone) and Volumify follows; move Volumify and Spotify follows. Everything stays in step.
 - 📱 **Syncs to every device** — it moves Spotify's own volume, so your phone and Connect speakers come along (no separate OS‑only gain).
 - 🌐 **English & 한국어** — auto‑detects your Windows language on first run; switch anytime from the tray.
-- 🧲 **Two ways to stick to Spotify** (pick one):
-  - **Overlay** — a slim bar right on the native rail, with an optional **hover fly‑out** that appears only when the rail gets too small to drag.
-  - **Compact dock** — a small panel that follows the Spotify window.
+- 🧲 **Two ways to ride along with Spotify** — use either, or both at once:
+  - **Overlay** — a slim bar right on the native rail (a green ring marks it as Volumify's, not Spotify's), with an optional **hover fly‑out** that appears only when the rail gets too small to drag.
+  - **Docked panel** — the curve panel snaps beside the Spotify window and follows it around.
 - 💾 **Remembers everything** (`%APPDATA%\SpotifyLinearVolume\settings.json`) and optional **run at startup**.
 - 📦 **Single self‑contained `.exe`** — no installer, no runtime to chase.
 
