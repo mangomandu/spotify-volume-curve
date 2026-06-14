@@ -2,12 +2,16 @@
 
 <img src="assets/thumbnail.png" alt="Volumify — Spotify's volume slider, fixed" width="860">
 
-<br><br>
+<br>
+
+**English** &nbsp;·&nbsp; [한국어](README.ko.md)
+
+<br>
 
 [![Download latest release](https://img.shields.io/github/v/release/mangomandu/volumify?label=Download%20.exe&logo=github&color=1ed760)](https://github.com/mangomandu/volumify/releases/latest)
 [![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)](#)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](#)
-[![Lossless & auto‑update safe](https://img.shields.io/badge/Spotify-lossless%20%26%20update%20safe-1ed760?logo=spotify&logoColor=white)](#-why-not-just-spicetify)
+[![Lossless & auto‑update safe](https://img.shields.io/badge/Spotify-lossless%20%26%20update%20safe-1ed760?logo=spotify&logoColor=white)](#-safe-by-design)
 [![License: MIT](https://img.shields.io/badge/License-MIT-1ed760)](LICENSE)
 
 ### [⬇️ Download the latest `.exe`](https://github.com/mangomandu/volumify/releases/latest) &nbsp;·&nbsp; no install, just run
@@ -18,7 +22,7 @@
 
 Spotify Desktop's volume is **top‑heavy**: the bottom half of the slider does almost nothing, and `80 → 100%` is a cliff. **Volumify** is a tiny tray app that remaps it with a tunable power curve so **every part of the slider is useful** — by driving **Spotify's own volume** through Windows UI Automation. The level you land on is Spotify's *real* volume, so it **syncs everywhere** — your phone, Connect speakers, the Windows mixer — and the Spotify client is *never* patched.
 
-> No Spicetify. No patching. **Survives auto‑updates. Keeps Spotify Lossless intact.** Syncs to your phone & Connect devices.
+> No client patching — **survives auto‑updates and keeps Spotify Lossless intact.** Syncs to your phone & Connect devices.
 
 ## ✨ See it
 
@@ -64,16 +68,9 @@ Spotify's built‑in curve is steep at the top (the bottom half barely moves), s
 - 💾 **Remembers everything** (`%APPDATA%\SpotifyLinearVolume\settings.json`) and optional **run at startup**.
 - 📦 **Single self‑contained `.exe`** — no installer, no runtime to chase.
 
-## 🤔 Why not just Spicetify?
+## 🔒 Safe by design
 
-|  | Spicetify volume tweaks | **Volumify** |
-|---|:---:|:---:|
-| Survives Spotify auto‑updates | ❌ silently reverts each update | ✅ never touches Spotify |
-| Works with **Lossless** | ⚠️ risky / can block it | ✅ completely untouched |
-| Curve | hard‑coded `x²` | ✅ tunable + live graph |
-| Setup | edit JS / run a CLI | ✅ run one `.exe` |
-
-Because nothing inside Spotify is edited — the app only nudges Spotify's own volume slider from the outside — Spotify is free to update itself forever and your curve just keeps working.
+Volumify never patches the Spotify client — it only nudges Spotify's **own** volume slider from the outside, through Windows UI Automation. So Spotify is free to update itself forever and your curve just keeps working, **Spotify Lossless stays intact**, and there's nothing to re‑install after an update.
 
 ## 🛠️ Build & run
 
