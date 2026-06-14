@@ -94,9 +94,9 @@ d.text((GX1 - w, GY1 + 8 * S), sl, font=f_axis, fill=(150, 150, 162))
 icon = Image.open("assets/icon.png").convert("RGBA").resize((76 * S, 76 * S), Image.LANCZOS)
 img.alpha_composite(icon, (94 * S, 132 * S))
 d.text((90 * S, 244 * S), "Volumify", font=f_title, fill=WHITE)
-d.text((94 * S, 380 * S), "Spotify's volume slider, fixed.", font=f_sub, fill=GREEN)
-d.text((94 * S, 420 * S), "A linear-feeling volume curve that", font=f_desc, fill=SUB)
-d.text((94 * S, 450 * S), "drives Spotify's own volume — syncs everywhere.", font=f_desc, fill=SUB)
+d.text((94 * S, 380 * S), "Finally, volume that makes sense.", font=f_sub, fill=GREEN)
+d.text((94 * S, 420 * S), "No more dead bottom half or 80→100% cliff.", font=f_desc, fill=SUB)
+d.text((94 * S, 450 * S), "Drives Spotify's real volume — syncs everywhere.", font=f_desc, fill=SUB)
 
 # badges
 bx, by, bh = 94 * S, 506 * S, 34 * S
