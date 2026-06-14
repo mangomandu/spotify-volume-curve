@@ -22,9 +22,9 @@
 
 ---
 
-Spotify Desktop's volume is **top‑heavy**: the bottom half of the slider does almost nothing, and `80 → 100%` is a cliff. This tiny tray app remaps it with a tunable power curve so **every part of the slider is useful** — and it does it at the **OS level** (Windows Core Audio), so the Spotify client is *never* modified.
+Spotify Desktop's volume is **top‑heavy**: the bottom half of the slider does almost nothing, and `80 → 100%` is a cliff. This tiny tray app remaps it with a tunable power curve so **every part of the slider is useful** — by driving **Spotify's own volume** through Windows UI Automation. The level you land on is Spotify's *real* volume, so it **syncs everywhere** — your phone, Connect speakers, the Windows mixer — and the Spotify client is *never* patched.
 
-> No Spicetify. No patching. **Survives auto‑updates. Keeps Spotify Lossless intact.**
+> No Spicetify. No patching. **Survives auto‑updates. Keeps Spotify Lossless intact.** Syncs to your phone & Connect devices.
 
 ## ✨ See it
 
@@ -38,24 +38,28 @@ Window too narrow to drag the little rail? **Hover it for a roomy fly‑out** wi
 
 ## 🎯 How it works
 
-The on‑screen position `x` (0–1) is remapped to the actual gain:
+You see one slider; the app remaps it. Move it to position `x` (0–1) and it sets **Spotify's own volume** to:
 
 ```
 gain = x ^ p
 ```
 
-| `p` | feel | use it when |
-|----:|------|-------------|
-| **0.35** | strong, loud low end | you mostly listen quiet‑to‑mid (★ recommended) |
-| **0.5** | balanced | a gentle, all‑round fix |
-| **1.0** | true linear | gain == slider position |
-| **> 1** | fine control down low | you ride very low volumes |
+Spotify's built‑in curve is steep at the top (the bottom half barely moves), so a `p` **below 1** lifts the low end and cancels it out — the whole slider becomes usable. Pick by feel from the tray or the panel's **live curve graph**:
 
-Spotify's own volume stays at 100%; the app only sets the **Windows session volume** for the Spotify process (the per‑app level in the Volume Mixer). Nothing inside Spotify is touched.
+| preset | `p` | feel |
+|--------|----:|------|
+| **강하게** | 0.2 | loud, punchy low end |
+| **균형** | 0.3 | balanced — a good starting point |
+| **약하게** | 0.45 | gentler |
+| **은은하게** | 0.65 | subtle |
+| **보정 없음** | 1.0 | no correction (Spotify's raw curve) |
+
+> These are starting points — tune to taste. Because the value it sets is Spotify's *real* volume, nothing inside Spotify is touched and the level follows you to every device.
 
 ## 🚀 Features
 
-- 🎚️ **Tunable perceptual curve** — presets from *강하게 (0.35)* through *리니어 (1.0)* to *스포티파이 기본 (2.0)*, with a **live curve graph**.
+- 🎚️ **Tunable perceptual curve** — presets from *강하게 (0.2)* to *보정 없음 (1.0)*, with a **live curve graph**.
+- 📱 **Syncs to every device** — it moves Spotify's own volume, so your phone and Connect speakers follow along (no separate OS‑only gain).
 - ⌨️ **Global hotkeys** — `Ctrl+Alt+↑ / ↓` from anywhere; the overlay, tray tooltip and panel show the level.
 - 🧲 **Two ways to stick to Spotify** (pick one):
   - **Overlay** — a slim bar right on the native rail, with an optional **hover fly‑out** that appears only when the rail gets too small to drag.
@@ -72,11 +76,11 @@ Spotify's own volume stays at 100%; the app only sets the **Windows session volu
 | Curve | hard‑coded `x²` | ✅ tunable + live graph |
 | Setup | edit JS / run a CLI | ✅ run one `.exe` |
 
-Because the fix lives entirely in Windows audio, Spotify is free to update itself forever and your curve just keeps working.
+Because nothing inside Spotify is edited — the app only nudges Spotify's own volume slider from the outside — Spotify is free to update itself forever and your curve just keeps working.
 
 ## 🛠️ Build & run
 
-> **Just want to use it?** [Download the `.exe`](https://github.com/mangomandu/spotify-volume-curve/releases/latest) — it's self‑contained, no build required. Run it, and it lives in your tray. Leave Spotify's own volume at 100%.
+> **Just want to use it?** [Download the `.exe`](https://github.com/mangomandu/spotify-volume-curve/releases/latest) — it's self‑contained, no build required. Run it and it lives in your tray, driving Spotify's volume for you.
 
 To build from source you need the [.NET 8 SDK](https://dotnet.microsoft.com/download):
 
@@ -99,7 +103,7 @@ The standalone `SpotifyLinearVolume.exe` lands in `bin\Release\net8.0-windows\wi
 
 ## 🧩 Tech
 
-C# / .NET 8 · WinForms (+ WPF for UI Automation) · [NAudio](https://github.com/naudio/NAudio) for Core Audio session volume. UI Automation is used only to *locate* Spotify's native slider for the overlay — never to control it. See [`FEATURES.md`](FEATURES.md) for design notes and the (hard‑won) overlay‑alignment findings.
+C# / .NET 8 · WinForms (+ WPF for UI Automation) · [NAudio](https://github.com/naudio/NAudio) for the Windows mixer. **UI Automation** drives Spotify's native volume slider (the RangeValue pattern) and locates it for the overlay — local, ~1 ms per change, no Web API or OAuth, and it never patches the client. See [`FEATURES.md`](FEATURES.md) for design notes and the (hard‑won) overlay‑alignment findings.
 
 ## 📄 License
 
