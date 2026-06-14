@@ -10,7 +10,7 @@ namespace SpotifyLinearVolume;
 /// </summary>
 public sealed class OverlayBarForm : Form
 {
-    private const long ResizeDebounceMs = 175;
+    private const long ResizeDebounceMs = 100; // settle wait after a resize before re-locating (snappier reappear)
     private const int PopupNarrowWidth = 78; // only fly out the popup when the overlay is this narrow or less
 
     private readonly VolumeModel _model;
