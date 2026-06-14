@@ -78,9 +78,10 @@ Volumify never patches the Spotify client — it only nudges Spotify's **own** v
 >
 > _First run:_ it's unsigned (open‑source, no paid certificate), so Windows SmartScreen may warn — click **More info → Run anyway**. On Windows 11 with *Smart App Control* on, unsigned apps are blocked until that feature is turned off.
 
-To build from source you need the [.NET 8 SDK](https://dotnet.microsoft.com/download):
+The Windows app lives in [`windows/`](windows). To build from source you need the [.NET 8 SDK](https://dotnet.microsoft.com/download):
 
 ```powershell
+cd windows
 dotnet build -c Release
 .\bin\Release\net8.0-windows\SpotifyLinearVolume.exe
 ```
@@ -89,17 +90,18 @@ dotnet build -c Release
 <summary><b>Single‑file, self‑contained release (.exe with no dependencies)</b></summary>
 
 ```powershell
+cd windows
 dotnet publish -c Release -r win-x64 --self-contained `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
   -p:EnableCompressionInSingleFile=true
 ```
 
-The standalone `SpotifyLinearVolume.exe` lands in `bin\Release\net8.0-windows\win-x64\publish\`.
+The standalone `SpotifyLinearVolume.exe` lands in `windows\bin\Release\net8.0-windows\win-x64\publish\`. Pushing a `v*` tag also builds and publishes a release automatically via [GitHub Actions](.github/workflows/release.yml).
 </details>
 
 ## 🧩 Tech
 
-C# / .NET 8 · WinForms (+ WPF for UI Automation) · [NAudio](https://github.com/naudio/NAudio) for the Windows mixer. **UI Automation** drives Spotify's native volume slider (the RangeValue pattern), reads it back for two‑way sync, and locates it for the overlay — local, ~1 ms per change, no Web API or OAuth, and it never patches the client. See [`FEATURES.md`](FEATURES.md) for design notes and the (hard‑won) overlay‑alignment findings.
+C# / .NET 8 · WinForms (+ WPF for UI Automation) · [NAudio](https://github.com/naudio/NAudio) for the Windows mixer. **UI Automation** drives Spotify's native volume slider (the RangeValue pattern), reads it back for two‑way sync, and locates it for the overlay — local, ~1 ms per change, no Web API or OAuth, and it never patches the client. See [`windows/FEATURES.md`](windows/FEATURES.md) for design notes and the (hard‑won) overlay‑alignment findings.
 
 ## 📄 License
 

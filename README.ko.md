@@ -78,9 +78,10 @@ Volumify는 스포티파이 클라이언트를 절대 패치하지 않아요 —
 >
 > _첫 실행:_ 서명이 안 된 오픈소스라(유료 인증서 없음) Windows SmartScreen이 경고할 수 있어요 — **추가 정보 → 실행**을 누르세요. Windows 11에서 *스마트 앱 제어*가 켜져 있으면 끄기 전까지 서명 안 된 앱은 차단돼요.
 
-소스에서 빌드하려면 [.NET 8 SDK](https://dotnet.microsoft.com/download)가 필요해요:
+Windows 앱은 [`windows/`](windows)에 있어요. 소스에서 빌드하려면 [.NET 8 SDK](https://dotnet.microsoft.com/download)가 필요해요:
 
 ```powershell
+cd windows
 dotnet build -c Release
 .\bin\Release\net8.0-windows\SpotifyLinearVolume.exe
 ```
@@ -89,17 +90,18 @@ dotnet build -c Release
 <summary><b>단일 파일, 자체 포함 릴리스 (.exe, 의존성 없음)</b></summary>
 
 ```powershell
+cd windows
 dotnet publish -c Release -r win-x64 --self-contained `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
   -p:EnableCompressionInSingleFile=true
 ```
 
-독립 실행형 `SpotifyLinearVolume.exe`는 `bin\Release\net8.0-windows\win-x64\publish\`에 생겨요.
+독립 실행형 `SpotifyLinearVolume.exe`는 `windows\bin\Release\net8.0-windows\win-x64\publish\`에 생겨요. `v*` 태그를 push하면 [GitHub Actions](.github/workflows/release.yml)가 자동으로 빌드·릴리스도 해줘요.
 </details>
 
 ## 🧩 기술
 
-C# / .NET 8 · WinForms (+ UI 자동화용 WPF) · Windows 믹서용 [NAudio](https://github.com/naudio/NAudio). **UI 자동화**가 스포티파이 네이티브 볼륨 슬라이더(RangeValue 패턴)를 움직이고, 양방향 동기화를 위해 다시 읽고, 오버레이 위치를 잡아요 — 로컬에서 변경당 ~1 ms, Web API·OAuth 없이, 클라이언트도 안 건드려요. 설계 노트와 (고생해서 얻은) 오버레이 정렬 발견은 [`FEATURES.md`](FEATURES.md) 참고.
+C# / .NET 8 · WinForms (+ UI 자동화용 WPF) · Windows 믹서용 [NAudio](https://github.com/naudio/NAudio). **UI 자동화**가 스포티파이 네이티브 볼륨 슬라이더(RangeValue 패턴)를 움직이고, 양방향 동기화를 위해 다시 읽고, 오버레이 위치를 잡아요 — 로컬에서 변경당 ~1 ms, Web API·OAuth 없이, 클라이언트도 안 건드려요. 설계 노트와 (고생해서 얻은) 오버레이 정렬 발견은 [`windows/FEATURES.md`](windows/FEATURES.md) 참고.
 
 ## 📄 라이선스
 
