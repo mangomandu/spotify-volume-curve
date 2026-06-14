@@ -9,14 +9,14 @@ public sealed class TrayAppContext : ApplicationContext
     // We set Spotify's OWN slider value to position^p; Spotify then applies its own steep, top-heavy
     // curve on top (≈ value⁴, confirmed by community reports + measurement). So the perceived loudness
     // ≈ position^(2.4·p): p<1 flattens it toward an even, usable slider (p≈0.4 ≈ loudness tracks the
-    // slider position); p=1 leaves Spotify's raw top-heavy feel; p>1 only makes it worse, so we don't
-    // offer it. (Earlier "리니어=1.0 / 스포티파이 기본=2.0" labels were backwards — 1.0 IS Spotify's raw curve.)
+    // slider position); p=1 leaves Spotify's raw top-heavy default. p>1 only makes it worse, so we
+    // don't offer it.
     private readonly Preset[] _presets =
     {
-        new("평탄", "Flat", 0.3f),
+        new("리니어", "Linear", 0.3f),
         new("고름", "Even", 0.4f),
         new("살짝 쏠림", "Slight ramp", 0.6f),
-        new("스포티파이 그대로", "Spotify native", 1.0f),
+        new("스포티파이 디폴트", "Spotify default", 1.0f),
     };
 
     private readonly AppSettings _settings = SettingsStore.Load();
@@ -37,13 +37,6 @@ public sealed class TrayAppContext : ApplicationContext
     public TrayAppContext()
     {
         Loc.Lang = Loc.FromSetting(_settings.Language);
-
-        // Normalize mutually-exclusive modes so the menu never lies about state.
-        if (_settings.OverlayOnVolume && _settings.DockToSpotify)
-        {
-            _settings.DockToSpotify = false;
-            SettingsStore.Save(_settings);
-        }
 
         _model = new VolumeModel(_settings.P);
         _panel = new ControlPanelForm(_model, _presets);
@@ -97,13 +90,8 @@ public sealed class TrayAppContext : ApplicationContext
 
     private void ToggleDock()
     {
+        // Docking the control panel and the overlay bar are independent — both can be on at once.
         bool enable = !_settings.DockToSpotify;
-        if (enable && _settings.OverlayOnVolume) // disable the conflicting mode first
-        {
-            _settings.OverlayOnVolume = false;
-            _overlayItem.Checked = false;
-            _overlay.SetActive(false);
-        }
         _settings.DockToSpotify = enable;
         _dockItem.Checked = enable;
         _panel.SetDockMode(enable);
@@ -149,13 +137,8 @@ public sealed class TrayAppContext : ApplicationContext
 
     private void ToggleOverlay()
     {
+        // The overlay bar and panel docking are independent — leave dock mode untouched.
         bool enable = !_settings.OverlayOnVolume;
-        if (enable && _settings.DockToSpotify) // disable the conflicting mode first
-        {
-            _settings.DockToSpotify = false;
-            _dockItem.Checked = false;
-            _panel.SetDockMode(false);
-        }
         _settings.OverlayOnVolume = enable;
         _overlayItem.Checked = enable;
         _overlay.SetActive(enable);
@@ -194,18 +177,8 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(_volLabel);
         menu.Items.Add(new ToolStripSeparator());
 
+        // --- the control panel (slider window) + where it sits ---
         menu.Items.Add(new ToolStripMenuItem(Loc.T("볼륨 슬라이더 열기", "Open volume slider"), null, (_, _) => _panel.ShowNearTray()));
-
-        var curve = new ToolStripMenuItem(Loc.T("곡선 세기", "Volume curve"));
-        foreach (var pr in _presets)
-        {
-            var item = new ToolStripMenuItem(pr.Label, null, (_, _) => _model.SetP(pr.P));
-            _presetItems.Add(item);
-            curve.DropDownItems.Add(item);
-        }
-        menu.Items.Add(curve);
-
-        menu.Items.Add(new ToolStripSeparator());
 
         _dockItem = new ToolStripMenuItem(Loc.T("Spotify 창에 붙이기", "Dock to Spotify window"), null, (_, _) => ToggleDock())
         {
@@ -214,6 +187,9 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(_dockItem);
         menu.Items.Add(new ToolStripMenuItem(Loc.T("   └ 붙는 위치 기본값으로", "   └ Reset dock position"), null, (_, _) => ResetDock()));
 
+        menu.Items.Add(new ToolStripSeparator());
+
+        // --- the overlay bar on Spotify's own slider ---
         _overlayItem = new ToolStripMenuItem(Loc.T("Spotify 볼륨 슬라이더에 겹치기", "Overlay on Spotify's volume slider"), null, (_, _) => ToggleOverlay())
         {
             Checked = _settings.OverlayOnVolume,
@@ -226,6 +202,20 @@ public sealed class TrayAppContext : ApplicationContext
         };
         _popupItems.Add(overlayPopupItem);
         menu.Items.Add(overlayPopupItem);
+
+        menu.Items.Add(new ToolStripSeparator());
+
+        // --- curve shape ---
+        var curve = new ToolStripMenuItem(Loc.T("곡선 세기", "Volume curve"));
+        foreach (var pr in _presets)
+        {
+            var item = new ToolStripMenuItem(pr.Label, null, (_, _) => _model.SetP(pr.P));
+            _presetItems.Add(item);
+            curve.DropDownItems.Add(item);
+        }
+        menu.Items.Add(curve);
+
+        menu.Items.Add(new ToolStripSeparator());
 
         _startupItem = new ToolStripMenuItem(Loc.T("Windows 시작 시 자동 실행", "Run at Windows startup"), null, (_, _) => ToggleStartup())
         {

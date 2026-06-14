@@ -48,16 +48,16 @@ Spotify's built‑in curve is **top‑heavy** (≈ `x⁴` — the bottom half is
 
 | preset | `p` | feel |
 |--------|----:|------|
-| **평탄** · *Flat* | 0.3 | flattest — loud early |
+| **리니어** · *Linear* | 0.3 | flattest — loud early |
 | **고름** · *Even* | 0.4 | perceived loudness ≈ slider position (**recommended**) |
 | **살짝 쏠림** · *Slight ramp* | 0.6 | a little top‑heavy |
-| **스포티파이 그대로** · *Spotify native* | 1.0 | Spotify's raw top‑heavy feel |
+| **스포티파이 디폴트** · *Spotify default* | 1.0 | Spotify's raw top‑heavy feel |
 
 > Starting points — tune to taste. Because the value it sets is Spotify's *real* volume, nothing inside Spotify is touched and the level follows you to every device.
 
 ## 🚀 Features
 
-- 🎚️ **Tunable perceptual curve** — presets from *평탄 / Flat (0.3)* through *고름 / Even (0.4, recommended)* to *스포티파이 그대로 / Spotify native (1.0)*, with a **live curve graph**.
+- 🎚️ **Tunable perceptual curve** — presets from *리니어 / Linear (0.3)* through *고름 / Even (0.4, recommended)* to *스포티파이 디폴트 / Spotify default (1.0)*, with a **live curve graph**.
 - 🔁 **Two‑way sync** — move Spotify's own slider (or a media key, or your phone) and Volumify follows; move Volumify and Spotify follows. Everything stays in step.
 - 📱 **Syncs to every device** — it moves Spotify's own volume, so your phone and Connect speakers come along (no separate OS‑only gain).
 - 🌐 **English & 한국어** — auto‑detects your Windows language on first run; switch anytime from the tray.
