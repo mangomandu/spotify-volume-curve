@@ -6,30 +6,25 @@ namespace SpotifyLinearVolume;
 /// <summary>
 /// Locates Spotify's native volume slider for the overlay, using only UI Automation.
 ///
-/// Spotify is Chromium and UIA only tells the truth about <b>X</b> coordinates — it tracks the
-/// slider's and buttons' left edges to ~1px across resizes. Two things it lies about:
-///  • The slider <b>Width</b> is the hit‑area (~129px), wider than the drawn rail; and at narrow
-///    window widths Spotify visually <b>compresses</b> the rail far below that, so any fixed trim
-///    eventually spills the overlay onto the mini‑player / fullscreen buttons next to it.
-///  • Every playbar element's <b>Y</b> is unreliable (off‑screen / inconsistent).
-///
-/// PrintWindow can't help (a backgrounded Chromium window renders nothing to capture). So we anchor
-/// on the slider's X and <b>clamp the width to the nearest button on the right</b> — those buttons
-/// are found by accessible name and their X is reliable, and they slide toward the slider precisely
-/// as the rail compresses, which is exactly the bound we need. Y stays a tuned offset from the
-/// window's bottom edge (the geometry is stable even though UIA's Y isn't).
+/// Spotify is Chromium; UIA tells the truth about <b>X</b> (tracks the slider/buttons to ~1px) and,
+/// for the real volume slider, about <b>Y</b> when it sits in the playbar. UIA's <i>Width</i> is the
+/// hit‑area (~129px), wider than the drawn rail (~92px), so we trim it; and we clamp the right edge
+/// to the nearest mini‑player / fullscreen button (found by accessible name) so the overlay never
+/// spills onto them as the rail compresses at narrow widths. The controller blurs the slider right
+/// after writing to it, so it stays in its resting state (no focus ring) under our overlay.
 /// </summary>
 public static class SpotifyVolumeLocator
 {
-    private const int PlaybarSliderOffset = 56; // slider top above the window's bottom edge (center stays at bottom-46)
-    private const int SliderHeight = 20;        // a bit taller than the rail so it fully hides it vertically
-    private const int RailRightInset = 32;      // UIA width overshoots the rail; trim a touch less so the box covers the rail's right cap
-    private const int ButtonGap = 6;            // reach this close to the next button (covers more of a compressed rail)
-    private const int WindowEdgeGap = 8;        // never poke past the window's right edge
-    private const int RailLeftCover = 3;        // extend left over the rail's left cap (gap to the speaker icon absorbs it)
+    private const int SliderHeight = 20;           // a touch taller than the ~16px rail, for easier grabbing
+    private const int RailRightCover = 6;          // extend past the rail's right end: we drive the slider, so its
+                                                   // white fill/knob span the whole track and must be hidden
+    private const int RailLeftCover = 4;           // cover the rail's left cap (gap to the speaker icon absorbs it)
+    private const int ButtonGap = 6;               // keep this clear of the next button
+    private const int WindowEdgeGap = 8;           // never poke past the window's right edge
+    private const int GeometricCenterOffset = 46;  // fallback: rail centre this far above the window bottom
 
-    // Accessible-name fragments for the controls immediately right of the volume rail
-    // (mini-player / fullscreen) in the locales we support. Used to bound the overlay's right edge.
+    // Accessible-name fragments for the controls immediately right of the volume rail (mini-player /
+    // fullscreen) in the locales we support — used to clamp the overlay's right edge.
     private static readonly string[] RightButtonNames =
     {
         "전체 화면", "전체화면", "미니플레이어", "미니 플레이어",
@@ -43,7 +38,6 @@ public static class SpotifyVolumeLocator
             var root = AutomationElement.FromHandle(spotifyHwnd);
             if (root == null) return null;
 
-            // One descendants walk for both sliders and buttons (the tree is large; don't walk twice).
             var elements = root.FindAll(TreeScope.Descendants, new OrCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Slider),
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)));
@@ -63,7 +57,6 @@ public static class SpotifyVolumeLocator
 
             var r = volume.Current.BoundingRectangle;
             int x = (int)r.X;
-            int width = Math.Max(24, (int)r.Width - RailRightInset);
 
             // Nearest mini-player / fullscreen button to the right of the slider (by name; X is reliable).
             int nearestButtonX = int.MaxValue;
@@ -83,16 +76,25 @@ public static class SpotifyVolumeLocator
             }
 
             if (!GetWindowRect(spotifyHwnd, out var win))
-                return new Rectangle(x, (int)r.Y, width, (int)r.Height);
+                return new Rectangle(x - RailLeftCover, (int)r.Y,
+                                     (int)r.Width + RailLeftCover + RailRightCover, (int)r.Height);
 
-            if (nearestButtonX != int.MaxValue)
-                width = Math.Min(width, nearestButtonX - x - ButtonGap); // don't reach the button
-            width = Math.Min(width, win.Right - x - WindowEdgeGap);      // don't leave the window
-            width = Math.Max(20, width);
+            // Cover the whole rail (left cap to past the knob), then clamp the right edge clear of the next
+            // button and the window edge so it never spills onto them.
+            int left = x - RailLeftCover;
+            int right = x + (int)r.Width + RailRightCover;
+            if (nearestButtonX != int.MaxValue) right = Math.Min(right, nearestButtonX - ButtonGap);
+            right = Math.Min(right, win.Right - WindowEdgeGap);
+            int width = Math.Max(24, right - left);
 
-            // Extend a few px left so the rail's left cap is covered too (the right edge — button/window
-            // bounded — is unchanged: (x - cover) + (width + cover) == x + width).
-            return new Rectangle(x - RailLeftCover, win.Bottom - PlaybarSliderOffset, width + RailLeftCover, SliderHeight);
+            // Vertical centre: trust UIA's Y when it lands in the playbar region (reliable for the real
+            // volume slider, robust to DPI / maximized vs floating); otherwise fall back to a fixed offset.
+            int uiaCenterY = (int)(r.Y + r.Height / 2);
+            int centerY = (uiaCenterY >= win.Bottom - 100 && uiaCenterY <= win.Bottom - 18)
+                ? uiaCenterY
+                : win.Bottom - GeometricCenterOffset;
+
+            return new Rectangle(left, centerY - SliderHeight / 2, width, SliderHeight);
         }
         catch
         {
