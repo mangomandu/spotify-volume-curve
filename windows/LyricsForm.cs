@@ -10,8 +10,10 @@ namespace Volumify;
 /// </summary>
 public sealed class LyricsForm : Form
 {
-    private static readonly Color Bg = Color.FromArgb(18, 18, 18);
-    private static readonly Color Accent = Color.FromArgb(30, 215, 96);
+    private static readonly Color Bg = Color.FromArgb(28, 27, 25);         // warm near-black (Claude-ish)
+    private static readonly Color Accent = Color.FromArgb(204, 120, 92);   // Claude coral #CC785C
+    private static readonly Color TextActive = Color.FromArgb(245, 243, 239);
+    private static readonly Color TextDim = Color.FromArgb(150, 145, 138);
     private const int HeaderH = 38;
     private const int Pad = 18;
 
@@ -41,6 +43,8 @@ public sealed class LyricsForm : Form
     private int _activeIdx = -1;
     private int _hoverRow = -1;           // synced lyrics: line under the cursor (click-to-seek affordance)
     private bool _canSearch;              // not-found state → offer a one-click web search (the long tail lives on niche sites)
+    private bool _searchHover;
+    private RectangleF _searchBtnRect;
     private float _scroll, _targetScroll;
     private bool _userScrolled;          // plain lyrics: wheel-controlled
     private long _userScrollTick;
@@ -140,7 +144,8 @@ public sealed class LyricsForm : Form
         _fetchCts?.Cancel();
         _lyrics = LyricsResult.None;
         _rows.Clear(); _layoutDirty = true;
-        _scroll = _targetScroll = 0; _activeIdx = -1; _userScrolled = false; _canSearch = false;
+        _scroll = _targetScroll = 0; _activeIdx = -1; _userScrolled = false;
+        _canSearch = false; _searchHover = false; _searchBtnRect = RectangleF.Empty;
 
         if (track == null || track.IsEmpty) { _status = Loc.T("재생 중인 곡이 없어요", "Nothing playing"); Invalidate(); return; }
         _status = Loc.T("가사 찾는 중…", "Finding lyrics…");
@@ -227,7 +232,7 @@ public sealed class LyricsForm : Form
     {
         base.OnMouseClick(e);
         if (e.Button != MouseButtons.Left) return;
-        if (_canSearch && e.Y >= HeaderH) { OpenWebSearch(); return; } // not-found → web search
+        if (_canSearch && _searchBtnRect.Contains(e.Location)) { OpenWebSearch(); return; } // not-found → web search
         if (!_lyrics.Synced) return;
         int r = RowAt(e.Location);
         if (r < 0) return;
@@ -242,8 +247,11 @@ public sealed class LyricsForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        bool onSearch = _canSearch && _searchBtnRect.Contains(e.Location);
+        if (onSearch != _searchHover) { _searchHover = onSearch; Invalidate(); }
+
         int r = (_lyrics.Synced && e.Y >= HeaderH) ? RowAt(e.Location) : -1;
-        bool clickable = (r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0) || (_canSearch && e.Y >= HeaderH);
+        bool clickable = (r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0) || onSearch;
         Cursor = clickable ? Cursors.Hand : Cursors.Default;
         if (r != _hoverRow) { _hoverRow = r; Invalidate(); }
     }
@@ -252,7 +260,9 @@ public sealed class LyricsForm : Form
     {
         base.OnMouseLeave(e);
         Cursor = Cursors.Default;
-        if (_hoverRow != -1) { _hoverRow = -1; Invalidate(); }
+        bool inv = _hoverRow != -1 || _searchHover;
+        _hoverRow = -1; _searchHover = false;
+        if (inv) Invalidate();
     }
 
     /// <summary>Row index at a client point (or -1). Mirrors the Y math in OnPaint.</summary>
@@ -277,6 +287,34 @@ public sealed class LyricsForm : Form
         catch { }
     }
 
+    // Coral pill button for the not-found state (the "send me to the web" affordance).
+    private void DrawSearchButton(Graphics g, Rectangle vp)
+    {
+        string label = Loc.T("🔍  웹에서 검색", "🔍  Search the web");
+        var sz = g.MeasureString(label, StatusFont);
+        float bw = Math.Min(vp.Width - 2 * Pad, sz.Width + 44), bh = 36;
+        float bx = vp.Left + (vp.Width - bw) / 2f, by = vp.Top + vp.Height / 2f + 6;
+        _searchBtnRect = new RectangleF(bx, by, bw, bh);
+
+        using var path = RoundedRect(_searchBtnRect, bh / 2f);
+        if (_searchHover) { using var fill = new SolidBrush(Accent); g.FillPath(fill, path); }
+        using (var pen = new Pen(Accent, 1.5f)) g.DrawPath(pen, path);
+        using var tb = new SolidBrush(_searchHover ? Color.White : Accent);
+        g.DrawString(label, StatusFont, tb, _searchBtnRect, CenterFmt);
+    }
+
+    private static GraphicsPath RoundedRect(RectangleF r, float radius)
+    {
+        float d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+        var p = new GraphicsPath();
+        p.AddArc(r.Left, r.Top, d, d, 180, 90);
+        p.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        p.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+
     // ----- paint -----
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -286,8 +324,8 @@ public sealed class LyricsForm : Form
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
 
         // header
-        using (var tb = new SolidBrush(Color.FromArgb(235, 235, 235)))
-        using (var sb = new SolidBrush(Color.FromArgb(140, 140, 140)))
+        using (var tb = new SolidBrush(TextActive))
+        using (var sb = new SolidBrush(TextDim))
         {
             string title = _track?.Title ?? "Volumify";
             string artist = _track?.Artist ?? "";
@@ -310,21 +348,17 @@ public sealed class LyricsForm : Form
         {
             if (_lyrics.Instrumental) // cat at the piano 🎹🐈
             {
-                using var eb = new SolidBrush(Color.FromArgb(205, 205, 205));
-                using var ib = new SolidBrush(Color.FromArgb(150, 150, 150));
+                using var eb = new SolidBrush(Color.FromArgb(210, 206, 200));
+                using var ib = new SolidBrush(TextDim);
                 g.DrawString("🎹🐈", EmojiFont, eb, new RectangleF(Pad, vp.Top + vp.Height / 2f - 58, vp.Width - 2 * Pad, 54), CenterFmt);
                 g.DrawString(Loc.T("연주곡 · 가사 없음", "Instrumental · no lyrics"), StatusFont, ib,
                     new RectangleF(Pad, vp.Top + vp.Height / 2f + 6, vp.Width - 2 * Pad, 28), CenterFmt);
                 return;
             }
-            using var stb = new SolidBrush(Color.FromArgb(150, 150, 150));
-            g.DrawString(_status, StatusFont, stb, new RectangleF(Pad, vp.Top, vp.Width - 2 * Pad, vp.Height), CenterFmt);
-            if (_canSearch) // one-click bridge to the web (niche releases only the distributor has, e.g. linkco.re)
-            {
-                using var hb = new SolidBrush(Accent);
-                g.DrawString(Loc.T("🔍 브라우저에서 검색", "🔍 Search the web"), StatusFont, hb,
-                    new RectangleF(Pad, vp.Top + vp.Height / 2f + 16, vp.Width - 2 * Pad, 26), CenterFmt);
-            }
+            using (var stb = new SolidBrush(TextDim))
+                g.DrawString(_status, StatusFont, stb,
+                    new RectangleF(Pad, vp.Top, vp.Width - 2 * Pad, _canSearch ? vp.Height - 28 : vp.Height), CenterFmt);
+            if (_canSearch) DrawSearchButton(g, vp); else _searchBtnRect = RectangleF.Empty;
             return;
         }
 
@@ -341,11 +375,11 @@ public sealed class LyricsForm : Form
             if (_lyrics.Synced)
             {
                 int d = Math.Abs(r - _activeIdx);
-                col = r == _activeIdx ? Color.White : Color.FromArgb(150, 150, 150);
-                alpha = r == _activeIdx ? 255 : d == 1 ? 165 : d == 2 ? 120 : 85;
-                if (r == _hoverRow && r != _activeIdx) { col = Color.FromArgb(225, 225, 225); alpha = Math.Max(alpha, 220); } // click-to-seek hint
+                col = r == _activeIdx ? Accent : TextDim;                 // current line in coral
+                alpha = r == _activeIdx ? 255 : d == 1 ? 170 : d == 2 ? 125 : 90;
+                if (r == _hoverRow && r != _activeIdx) { col = Color.FromArgb(224, 220, 213); alpha = Math.Max(alpha, 225); } // click-to-seek hint
             }
-            else { col = Color.FromArgb(205, 205, 205); alpha = 230; }
+            else { col = Color.FromArgb(202, 197, 190); alpha = 230; }
 
             // soft fade near the viewport edges
             float ly = y + row.height / 2f;
