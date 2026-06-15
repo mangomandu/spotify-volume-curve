@@ -8,7 +8,8 @@ namespace Volumify;
 /// EVENT_OBJECT_LOCATIONCHANGE hook (event-driven, so it keeps up with any window move/resize at any refresh
 /// rate). The owner forwards drag start/end from its WndProc so a manual drag re-anchors the saved offset.
 ///
-/// No z-order juggling here: the lyrics window is TopMost, so it already sits above Spotify — we only move it.
+/// Keeps the window just above Spotify in the z-order (NOT global TopMost), so it follows Spotify's layer but
+/// doesn't float over other apps you bring to the front.
 /// </summary>
 public sealed class SpotifyDock : IDisposable
 {
@@ -108,6 +109,13 @@ public sealed class SpotifyDock : IDisposable
         _form.Location = new Point(
             Clamp(target.X, screen.Left + 8, screen.Right - _form.Width - 8, screen.Left),
             Clamp(target.Y, screen.Top + 8, screen.Bottom - _form.Height - 8, screen.Top));
+
+        // Sit just above Spotify in the z-order (not global TopMost) → it follows Spotify's layer but doesn't
+        // cover other apps you focus. Re-asserted every tick, so it rejoins Spotify within ~250ms after you
+        // bring Spotify back to the front.
+        IntPtr above = GetWindow(_hwnd, GW_HWNDPREV);
+        if (above != _form.Handle)
+            SetWindowPos(_form.Handle, above, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     private void InstallHook()
@@ -132,6 +140,9 @@ public sealed class SpotifyDock : IDisposable
     private delegate void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
     [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventProc lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
     [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
 
     private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B, WINEVENT_OUTOFCONTEXT = 0, WINEVENT_SKIPOWNPROCESS = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010, GW_HWNDPREV = 3;
 }

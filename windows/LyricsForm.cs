@@ -65,7 +65,8 @@ public sealed class LyricsForm : Form
         MinimumSize = new Size(240, 200);
         BackColor = Bg;
         ShowInTaskbar = false;
-        TopMost = true;
+        // Not TopMost — the dock keeps it just above Spotify in the z-order so it follows Spotify's layer
+        // but never floats over other apps you bring to the front.
 
         SetupClose();
         Controls.Add(_close);
