@@ -147,6 +147,25 @@ public sealed class NowPlaying : IDisposable
     /// <summary>Re-anchor the interpolated position from the latest SMTC timeline (cheap; call from a timer).</summary>
     public void Resync() { var s = _session; if (s != null) RefreshTimeline(s); }
 
+    /// <summary>
+    /// Seek the active session to <paramref name="ms"/> — used by click-to-seek on synced lyrics.
+    /// Goes through SMTC, so it drives Spotify's own transport (and syncs to phone/Connect). Position
+    /// is optimistically re-anchored so the highlight jumps immediately; Spotify's next timeline event corrects it.
+    /// </summary>
+    public async void TrySeek(long ms)
+    {
+        var s = _session;
+        if (s == null) return;
+        long dur; lock (_gate) dur = _durMs;
+        if (dur > 0) ms = Math.Clamp(ms, 0, dur);
+        try
+        {
+            bool ok = await s.TryChangePlaybackPositionAsync(ms * 10000L); // ms → 100-ns ticks
+            if (ok) lock (_gate) { _baseMs = ms; _baseTick = Environment.TickCount64; }
+        }
+        catch { }
+    }
+
     public void Dispose()
     {
         _disposed = true;

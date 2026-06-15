@@ -89,6 +89,12 @@ public sealed class TrayAppContext : ApplicationContext
             _settings.LyricsX = b.X; _settings.LyricsY = b.Y; _settings.LyricsW = b.Width; _settings.LyricsH = b.Height;
             SettingsStore.Save(_settings);
         };
+        // Reuse a saved Musixmatch token (token.get is rate-limited); persist a freshly minted one.
+        LyricsProvider.InitToken(_settings.MusixmatchToken, tok =>
+        {
+            _settings.MusixmatchToken = tok;
+            SettingsStore.Save(_settings);
+        });
         if (_settings.LyricsEnabled) _lyricsForm.SetActive(true);
 
         // Pull external Spotify volume changes (its own slider, hotkeys, the phone) into every surface.

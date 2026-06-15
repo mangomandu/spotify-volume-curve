@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -20,8 +21,13 @@ public sealed record LyricsResult(IReadOnlyList<LyricLine> Lines, bool Synced, b
 
 /// <summary>
 /// Fetches lyrics from free third-party sources — never Spotify's API, never patching Spotify.
-///   1. LRCLIB (synced LRC; what gives the Spotify-style line sync)
-///   2. Genius (plain text; covers songs Spotify/LRCLIB lack — e.g. brand-new releases)
+/// The synced sources race in parallel and the first synced hit wins; plain text is only a fallback
+/// (so we never "google" first).
+///   1. Musixmatch — line-synced. This is the SAME database Spotify licenses for its own lyrics, so we
+///                   get exactly what Spotify shows (identical timing) without touching Spotify or its token.
+///   2. LRCLIB     — line-synced, community-sourced; covers some songs Musixmatch lacks.
+///   3. Genius     — plain text only, last resort for the long tail (songs nobody has timed —
+///                   the same reason Spotify itself shows no lyrics for them).
 /// Results are cached per track for the session.
 /// </summary>
 public static class LyricsProvider
@@ -38,12 +44,43 @@ public static class LyricsProvider
 
     private static readonly object _cacheGate = new();
     private static readonly Dictionary<string, LyricsResult> _cache = new();
+    private static readonly string DiskCacheDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Volumify", "lyrics");
+
+    // Musixmatch needs a "user token". token.get is heavily rate-limited (a few mints trip a captcha),
+    // so we mint ONE and reuse it — persisted across launches via InitToken. null = unknown,
+    // "" = a definitive failure (captcha/limit) so we stop hammering, else the token.
+    private static readonly SemaphoreSlim _tokenGate = new(1, 1);
+    private static volatile string? _mxmToken;
+    private static long _tokenRetryAfter;   // TickCount64 before which we won't re-mint after a failed token.get (anti-hammer)
+    private static Action<string>? _onTokenMinted;
+    private static int _warmed;
+
+    /// <summary>Seed a Musixmatch token saved from a previous run, plus a sink that persists a freshly minted one.</summary>
+    public static void InitToken(string? saved, Action<string> onMinted)
+    {
+        if (!string.IsNullOrEmpty(saved)) _mxmToken = saved;
+        _onTokenMinted = onMinted;
+    }
+
+    /// <summary>Pre-mint the Musixmatch token so the first lookup isn't slowed by it. Call when lyrics turn on.</summary>
+    public static void WarmUp()
+    {
+        if (Interlocked.Exchange(ref _warmed, 1) != 0) return;
+        _ = Task.Run(async () => { try { await GetMxmTokenAsync(CancellationToken.None); } catch { } });
+    }
 
     public static async Task<LyricsResult> GetAsync(NowPlaying.TrackInfo track, CancellationToken ct)
     {
         if (track.IsEmpty) return LyricsResult.None;
         string key = track.Key;
         lock (_cacheGate) if (_cache.TryGetValue(key, out var hit)) return hit;
+
+        // disk cache — a song we've fetched before is instant on replay or after a restart.
+        // Only successful results are persisted; misses stay in-memory so they're retried next session.
+        // Read off the UI thread (%APPDATA% can be roaming / AV-scanned, so the read can stall).
+        var disk = await Task.Run(() => ReadDisk(key));
+        if (disk is { Found: true }) { lock (_cacheGate) _cache[key] = disk; return disk; }
 
         LyricsResult result = LyricsResult.None;
         try { result = await FetchAsync(track, ct); }
@@ -55,18 +92,237 @@ public static class LyricsProvider
             if (_cache.Count > 120) _cache.Clear();
             _cache[key] = result;
         }
+        if (result.Found) { var r = result; var k = key; _ = Task.Run(() => WriteDisk(k, r)); } // persist off the UI thread
         return result;
+    }
+
+    // ---------- persistent (disk) cache ----------
+    private static LyricsResult? ReadDisk(string key)
+    {
+        try
+        {
+            var path = Path.Combine(DiskCacheDir, KeyHash(key) + ".json");
+            if (!File.Exists(path)) return null;
+            return JsonSerializer.Deserialize<LyricsResult>(File.ReadAllText(path));
+        }
+        catch { return null; }
+    }
+
+    private static void WriteDisk(string key, LyricsResult r)
+    {
+        try
+        {
+            Directory.CreateDirectory(DiskCacheDir);
+            var path = Path.Combine(DiskCacheDir, KeyHash(key) + ".json");
+            var tmp = path + "." + Environment.CurrentManagedThreadId + ".tmp"; // unique tmp so concurrent writes don't collide
+            File.WriteAllText(tmp, JsonSerializer.Serialize(r));
+            File.Move(tmp, path, overwrite: true); // atomic replace so a crash can't leave a truncated cache file
+        }
+        catch { }
+    }
+
+    private static string KeyHash(string s)
+    {
+        ulong h = 14695981039346656037UL;            // FNV-1a 64-bit → stable filename across runs (no GetHashCode)
+        foreach (char c in s) { h ^= c; h *= 1099511628211UL; }
+        return h.ToString("x16");
     }
 
     private static async Task<LyricsResult> FetchAsync(NowPlaying.TrackInfo t, CancellationToken ct)
     {
-        var lrclib = await TryLrclibAsync(t, ct);
-        if (lrclib.Found) return lrclib;
+        // Synced sources race in parallel — the first synced result wins (fast, and never scrapes first).
+        var pending = new List<Task<LyricsResult>>
+        {
+            Safe(TryMusixmatchAsync(t, ct)),
+            Safe(TryLrclibAsync(t, ct)),
+        };
+        LyricsResult plain = LyricsResult.None, inst = LyricsResult.None;
+        while (pending.Count > 0)
+        {
+            var done = await Task.WhenAny(pending);
+            pending.Remove(done);
+            var r = await done; // Safe() guarantees this won't throw (except cancellation)
+            if (r.Synced) return r;                          // best case: timed lyrics that follow along
+            if (r.Instrumental && !inst.Found) inst = r;
+            else if (r.Found && !plain.Found) plain = r;     // a plain hit, kept only as a fallback
+        }
+        if (plain.Found) return plain;
+        if (inst.Found) return inst;
 
+        // Long tail only: now we scrape Genius (plain text, no timing — can't follow along).
         var genius = await TryGeniusAsync(t, ct);
-        if (genius.Found) return genius;
+        return genius.Found ? genius : LyricsResult.None;
+    }
 
-        return LyricsResult.None;
+    private static async Task<LyricsResult> Safe(Task<LyricsResult> task)
+    {
+        try { return await task; }
+        catch (OperationCanceledException) { throw; }
+        catch { return LyricsResult.None; }
+    }
+
+    // ---------- Musixmatch (synced; the same database Spotify licenses) ----------
+    private const string MxmBase = "https://apic-desktop.musixmatch.com/ws/1.1/";
+    private const string MxmApp = "web-desktop-app-v1.0";
+
+    private static async Task<LyricsResult> TryMusixmatchAsync(NowPlaying.TrackInfo t, CancellationToken ct)
+    {
+        string? token = await GetMxmTokenAsync(ct);
+        if (string.IsNullOrEmpty(token)) return LyricsResult.None;
+
+        long durSec = t.DurationMs / 1000;
+        var url = MxmBase + "macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm"
+                + "&app_id=" + MxmApp
+                + "&q_track=" + Enc(t.Title)
+                + "&q_artist=" + Enc(t.Artist)
+                + "&q_album=" + Enc(t.Album)
+                + (durSec > 0 ? "&q_duration=" + durSec + "&f_subtitle_length=" + durSec : "")
+                + "&usertoken=" + Enc(token);
+        var json = await MxmGetAsync(url, ct);
+        if (json == null) return LyricsResult.None;
+
+        var (result, authFailed) = ParseMusixmatch(json);
+        if (authFailed && _mxmToken == token) _mxmToken = null; // invalidate only the token THIS request used → re-mint next lookup
+        return result;
+    }
+
+    private static async Task<string?> GetMxmTokenAsync(CancellationToken ct)
+    {
+        var cached = _mxmToken;
+        if (cached != null) return cached.Length == 0 ? null : cached;
+
+        await _tokenGate.WaitAsync(ct);
+        try
+        {
+            if (_mxmToken != null) return _mxmToken.Length == 0 ? null : _mxmToken;
+            if (Environment.TickCount64 < _tokenRetryAfter) return null; // backing off after a recent failure
+
+            var json = await MxmGetAsync(MxmBase + "token.get?app_id=" + MxmApp + "&format=json", ct);
+            // No response (network down / 401 / 429 / 5xx): back off 60s so queued + later callers don't hammer the
+            // rate-limited endpoint. Leave _mxmToken null so it can recover once the cooldown passes.
+            if (json == null) { _tokenRetryAfter = Environment.TickCount64 + 60_000; return null; }
+
+            string? token = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var msg = doc.RootElement.GetProperty("message");
+                int status = msg.GetProperty("header").GetProperty("status_code").GetInt32();
+                if (status == 200 && msg.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.Object
+                    && body.TryGetProperty("user_token", out var ut) && ut.ValueKind == JsonValueKind.String)
+                {
+                    var s = ut.GetString();
+                    if (!string.IsNullOrEmpty(s) && s.Length > 20) token = s; // real tokens are ~54 chars
+                }
+            }
+            catch { }
+
+            _mxmToken = token ?? "";                                       // "" = definitive failure → stop hammering
+            if (token != null) { try { _onTokenMinted?.Invoke(token); } catch { } }
+            return token;
+        }
+        finally { _tokenGate.Release(); }
+    }
+
+    /// <summary>Parse macro.subtitles.get. Returns (result, authFailed); authFailed flags a stale token to re-mint.</summary>
+    private static (LyricsResult result, bool authFailed) ParseMusixmatch(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var msg = doc.RootElement.GetProperty("message");
+            int top = msg.GetProperty("header").GetProperty("status_code").GetInt32();
+            if (top == 401 || top == 403) return (LyricsResult.None, true);
+            if (!msg.TryGetProperty("body", out var body) || body.ValueKind != JsonValueKind.Object) return (LyricsResult.None, false);
+            if (!body.TryGetProperty("macro_calls", out var macro) || macro.ValueKind != JsonValueKind.Object) return (LyricsResult.None, false);
+
+            // track metadata — instrumental tracks have no lyrics by definition
+            if (macro.TryGetProperty("matcher.track.get", out var matcher)
+                && TryBody(matcher, out var mBody)
+                && mBody.TryGetProperty("track", out var track) && track.ValueKind == JsonValueKind.Object
+                && track.TryGetProperty("instrumental", out var ins) && ins.ValueKind == JsonValueKind.Number && ins.GetInt32() == 1)
+                return (LyricsResult.Inst("musixmatch"), false);
+
+            // synced subtitles → subtitle_list[0].subtitle.subtitle_body is itself a JSON array string
+            if (macro.TryGetProperty("track.subtitles.get", out var subs)
+                && TryBody(subs, out var sBody)
+                && sBody.TryGetProperty("subtitle_list", out var slist) && slist.ValueKind == JsonValueKind.Array && slist.GetArrayLength() > 0
+                && slist[0].TryGetProperty("subtitle", out var subtitle)
+                && subtitle.TryGetProperty("subtitle_body", out var sb) && sb.ValueKind == JsonValueKind.String)
+            {
+                var lines = ParseMxmSubtitle(sb.GetString()!);
+                if (lines.Count > 0) return (new LyricsResult(lines, true, false, true, "musixmatch"), false);
+            }
+
+            // plain lyrics fallback
+            if (macro.TryGetProperty("track.lyrics.get", out var lyr)
+                && TryBody(lyr, out var lBody)
+                && lBody.TryGetProperty("lyrics", out var lyrics) && lyrics.ValueKind == JsonValueKind.Object)
+            {
+                bool restricted = lyrics.TryGetProperty("restricted", out var rr) && rr.ValueKind == JsonValueKind.Number && rr.GetInt32() == 1;
+                if (!restricted && lyrics.TryGetProperty("lyrics_body", out var lb) && lb.ValueKind == JsonValueKind.String
+                    && lb.GetString() is { Length: > 0 } plain)
+                {
+                    var lines = ParsePlain(StripMxmFooter(plain));
+                    if (lines.Count > 0) return (new LyricsResult(lines, false, false, true, "musixmatch"), false);
+                }
+            }
+        }
+        catch { }
+        return (LyricsResult.None, false);
+    }
+
+    // macro_calls[name].message.body as a JSON object; false when absent (body stays default and is never read,
+    // avoiding InvalidOperationException from reading .ValueKind on a default JsonElement).
+    private static bool TryBody(JsonElement call, out JsonElement body)
+    {
+        body = default;
+        return call.TryGetProperty("message", out var m)
+            && m.TryGetProperty("body", out body)
+            && body.ValueKind == JsonValueKind.Object;
+    }
+
+    private static List<LyricLine> ParseMxmSubtitle(string body)
+    {
+        var list = new List<LyricLine>();
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                string text = e.TryGetProperty("text", out var tx) && tx.ValueKind == JsonValueKind.String ? tx.GetString() ?? "" : "";
+                long ms = 0;
+                if (e.TryGetProperty("time", out var tm) && tm.TryGetProperty("total", out var tot) && tot.ValueKind == JsonValueKind.Number)
+                    ms = (long)Math.Round(tot.GetDouble() * 1000);
+                list.Add(new LyricLine(ms, text.Trim()));
+            }
+        }
+        catch { }
+        list.Sort((a, b) => a.TimeMs.CompareTo(b.TimeMs));
+        return list;
+    }
+
+    private static string StripMxmFooter(string s)
+    {
+        int i = s.IndexOf("***", StringComparison.Ordinal); // "******* This Lyrics is NOT for Commercial use *******"
+        return i > 0 ? s[..i] : s;
+    }
+
+    private static async Task<string?> MxmGetAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", BrowserUa);
+            req.Headers.TryAddWithoutValidation("Cookie", "x-mxm-token-guid=");
+            req.Headers.TryAddWithoutValidation("Accept", "application/json");
+            using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseContentRead, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadAsStringAsync(ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return null; }
     }
 
     // ---------- LRCLIB (synced) ----------
@@ -191,7 +447,12 @@ public static class LyricsProvider
 
     private static bool IsGeniusJunk(string line) =>
         line.Contains("Contributors") || line.Contains("Translations") || line.Contains("Romanization")
-        || line.Contains("You might also like") || line.EndsWith("Embed") || line.EndsWith(" Lyrics");
+        || line.Contains("You might also like") || line.EndsWith("Embed") || line.EndsWith(" Lyrics")
+        || IsSectionHeader(line);
+
+    // [Verse], [Chorus], [Pre-Chorus 1: …], [Bridge] — structural markers, not lyrics
+    private static bool IsSectionHeader(string line) =>
+        line.Length > 1 && line[0] == '[' && line[^1] == ']';
 
     // ---------- parsing helpers ----------
     private static List<LyricLine> ParseLrc(string lrc)
@@ -231,7 +492,11 @@ public static class LyricsProvider
     {
         var list = new List<LyricLine>();
         foreach (var raw in text.Replace("\r", "").Split('\n'))
-            list.Add(new LyricLine(-1, raw.Trim()));
+        {
+            var line = raw.Trim();
+            if (IsSectionHeader(line)) continue; // drop [Verse]/[Chorus]/… structural markers
+            list.Add(new LyricLine(-1, line));
+        }
         // trim leading/trailing blank lines
         while (list.Count > 0 && list[0].Text.Length == 0) list.RemoveAt(0);
         while (list.Count > 0 && list[^1].Text.Length == 0) list.RemoveAt(list.Count - 1);

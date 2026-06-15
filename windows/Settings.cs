@@ -20,6 +20,7 @@ public sealed class AppSettings
     public int LyricsY { get; set; }
     public int LyricsW { get; set; }
     public int LyricsH { get; set; }
+    public string MusixmatchToken { get; set; } = ""; // minted once (token.get is rate-limited), reused across runs
     public string Language { get; set; } = ""; // "ko" / "en"; empty = auto-detect from the OS on first run
 }
 

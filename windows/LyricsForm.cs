@@ -17,13 +17,14 @@ public sealed class LyricsForm : Form
 
     private static readonly Font LineFont = new("Segoe UI", 13f);
     private static readonly Font HeaderFont = new("Segoe UI Semibold", 9.5f);
+    private static readonly Font ArtistFont = new("Segoe UI", 8.5f);
     private static readonly Font StatusFont = new("Segoe UI", 11f);
     private static readonly StringFormat WrapFmt = new() { FormatFlags = 0 };
     private static readonly StringFormat CenterFmt = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
 
     private readonly NowPlaying _np;
     private readonly Label _close = new();
-    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 110 };
+    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 }; // ~25fps; OnTick only repaints when something moves
 
     private LyricsResult _lyrics = LyricsResult.None;
     private NowPlaying.TrackInfo? _track;
@@ -35,6 +36,7 @@ public sealed class LyricsForm : Form
     private bool _layoutDirty = true;
 
     private int _activeIdx = -1;
+    private int _hoverRow = -1;           // synced lyrics: line under the cursor (click-to-seek affordance)
     private float _scroll, _targetScroll;
     private bool _userScrolled;          // plain lyrics: wheel-controlled
     private long _userScrollTick;
@@ -89,6 +91,7 @@ public sealed class LyricsForm : Form
     {
         if (on)
         {
+            LyricsProvider.WarmUp(); // mint the Musixmatch token now so the first lookup isn't slowed by it
             _timer.Start();
             Show();
             KickFetch(); // (re)load lyrics for whatever's playing now
@@ -140,27 +143,40 @@ public sealed class LyricsForm : Form
     // ----- tick: advance the synced highlight -----
     private void OnTick()
     {
-        if (_track != null && (_np.Current == null || _np.Current.Key != _track.Key)) { /* TrackChanged will fire */ }
-        if (!_lyrics.Synced || _lyrics.Lines.Count == 0) { return; }
+        bool needPaint = false;
 
-        _np.Resync();
-        long pos = _np.PositionMs;
-        int idx = -1;
-        var lines = _lyrics.Lines;
-        for (int i = 0; i < lines.Count; i++) { if (lines[i].TimeMs <= pos) idx = i; else break; }
-        if (idx != _activeIdx) { _activeIdx = idx; _userScrolled = false; }
-
-        if (!_userScrolled && _rows.Count > 0)
+        if (_lyrics.Synced && _lyrics.Lines.Count > 0)
         {
-            float vpH = ClientSize.Height - HeaderH - Pad;
-            float centerY = _activeIdx >= 0 && _activeIdx < _rows.Count
-                ? _rows[_activeIdx].top + _rows[_activeIdx].height / 2f
-                : 0;
-            _targetScroll = centerY - vpH / 2f;
+            // resume auto-follow a few seconds after a manual peek (wheel scroll), like Spotify
+            if (_userScrolled && Environment.TickCount64 - _userScrollTick > 4000) _userScrolled = false;
+
+            _np.Resync();
+            long pos = _np.PositionMs;
+            int idx = -1;
+            var lines = _lyrics.Lines;
+            for (int i = 0; i < lines.Count; i++) { if (lines[i].TimeMs <= pos) idx = i; else break; }
+            if (idx != _activeIdx) { _activeIdx = idx; _userScrolled = false; needPaint = true; }
+
+            if (!_userScrolled && _rows.Count > 0)
+            {
+                float vpH = ClientSize.Height - HeaderH - Pad;
+                float centerY = _activeIdx >= 0 && _activeIdx < _rows.Count
+                    ? _rows[_activeIdx].top + _rows[_activeIdx].height / 2f
+                    : 0;
+                _targetScroll = centerY - vpH / 2f;
+            }
         }
-        _scroll += (_targetScroll - _scroll) * 0.22f;
-        if (Math.Abs(_targetScroll - _scroll) < 0.4f) _scroll = _targetScroll;
-        Invalidate();
+
+        // Animate scroll toward target — runs for BOTH the synced auto-scroll AND plain wheel-scrolling.
+        // (This used to sit after an early return for plain lyrics, so plain lyrics never scrolled at all.)
+        if (Math.Abs(_targetScroll - _scroll) > 0.4f)
+        {
+            _scroll += (_targetScroll - _scroll) * 0.22f;
+            if (Math.Abs(_targetScroll - _scroll) < 0.4f) _scroll = _targetScroll;
+            needPaint = true;
+        }
+
+        if (needPaint) Invalidate();
     }
 
     protected override void OnMouseWheel(MouseEventArgs e)
@@ -184,6 +200,50 @@ public sealed class LyricsForm : Form
         _targetScroll = Math.Clamp(_targetScroll, 0, max);
     }
 
+    // ----- click-to-seek (synced lyrics): click a line → Spotify jumps there, like its own lyrics -----
+    protected override void OnMouseClick(MouseEventArgs e)
+    {
+        base.OnMouseClick(e);
+        if (e.Button != MouseButtons.Left || !_lyrics.Synced) return;
+        int r = RowAt(e.Location);
+        if (r < 0) return;
+        var line = _lyrics.Lines[_rows[r].line];
+        if (line.TimeMs < 0) return;
+        _np.TrySeek(line.TimeMs);
+        _activeIdx = _rows[r].line;
+        _userScrolled = false;       // re-anchor auto-follow to the clicked line
+        Invalidate();
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        int r = (_lyrics.Synced && e.Y >= HeaderH) ? RowAt(e.Location) : -1;
+        bool clickable = r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0;
+        Cursor = clickable ? Cursors.Hand : Cursors.Default;
+        if (r != _hoverRow) { _hoverRow = r; Invalidate(); }
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        Cursor = Cursors.Default;
+        if (_hoverRow != -1) { _hoverRow = -1; Invalidate(); }
+    }
+
+    /// <summary>Row index at a client point (or -1). Mirrors the Y math in OnPaint.</summary>
+    private int RowAt(Point p)
+    {
+        if (_rows.Count == 0 || p.Y < HeaderH) return -1;
+        float baseY = HeaderH + Pad - _scroll;
+        for (int r = 0; r < _rows.Count; r++)
+        {
+            float y = baseY + _rows[r].top;
+            if (p.Y >= y && p.Y < y + _rows[r].height) return r;
+        }
+        return -1;
+    }
+
     // ----- paint -----
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -200,7 +260,14 @@ public sealed class LyricsForm : Form
             string artist = _track?.Artist ?? "";
             g.DrawString(Ellipsize(g, title, HeaderFont, ClientSize.Width - 70), HeaderFont, tb, 16, 8);
             if (artist.Length > 0)
-                g.DrawString(Ellipsize(g, artist, StatusFont, ClientSize.Width - 70), new Font("Segoe UI", 8.5f), sb, 16, 22);
+                g.DrawString(Ellipsize(g, artist, ArtistFont, ClientSize.Width - 70), ArtistFont, sb, 16, 22);
+        }
+
+        // sync indicator, just left of ✕: green = synced (follows + click-to-seek), gray = plain text only
+        if (_lyrics.Found && _lyrics.Lines.Count > 0)
+        {
+            using var dotB = new SolidBrush(_lyrics.Synced ? Accent : Color.FromArgb(110, 110, 110));
+            g.FillEllipse(dotB, ClientSize.Width - 48, 14, 8, 8);
         }
 
         var vp = new Rectangle(0, HeaderH, ClientSize.Width, ClientSize.Height - HeaderH);
@@ -228,6 +295,7 @@ public sealed class LyricsForm : Form
                 int d = Math.Abs(r - _activeIdx);
                 col = r == _activeIdx ? Color.White : Color.FromArgb(150, 150, 150);
                 alpha = r == _activeIdx ? 255 : d == 1 ? 165 : d == 2 ? 120 : 85;
+                if (r == _hoverRow && r != _activeIdx) { col = Color.FromArgb(225, 225, 225); alpha = Math.Max(alpha, 220); } // click-to-seek hint
             }
             else { col = Color.FromArgb(205, 205, 205); alpha = 230; }
 
