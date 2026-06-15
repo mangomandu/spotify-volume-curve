@@ -96,38 +96,42 @@ public sealed class SpotifyAuth
     /// Spotify API and SMTC can be momentarily out of step on a track change, and a stale ID would show the
     /// previous song's lyrics, so we verify the title and retry once to let the API catch up.
     /// </summary>
-    public async Task<string?> GetCurrentTrackIdAsync(string expectedTitle, CancellationToken ct)
+    public async Task<string?> GetCurrentTrackIdAsync(string expectedTitle, long expectedDurationMs, CancellationToken ct)
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
-            var (id, name) = await FetchCurrentAsync(ct);
+            var (id, name, durMs) = await FetchCurrentAsync(ct);
             if (id == null) return null;
-            if (TitleMatches(expectedTitle, name ?? "")) return id;
+            // duration is language-agnostic (a different track almost never has the same length); fall back to
+            // the title so a Korean/English name difference between SMTC and the API doesn't reject a valid id.
+            bool durOk = expectedDurationMs > 0 && durMs > 0 && Math.Abs(expectedDurationMs - durMs) <= 3000;
+            if (durOk || TitleMatches(expectedTitle, name ?? "")) return id;
             if (attempt == 0) { try { await Task.Delay(700, ct); } catch { return null; } } // API behind SMTC → wait + retry
         }
         return null; // API still disagrees → let the fuzzy pipeline handle this track instead of showing wrong lyrics
     }
 
-    private async Task<(string? id, string? name)> FetchCurrentAsync(CancellationToken ct)
+    private async Task<(string? id, string? name, long durMs)> FetchCurrentAsync(CancellationToken ct)
     {
         var token = await EnsureAccessAsync(ct);
-        if (token == null) return (null, null);
+        if (token == null) return (null, null, 0);
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.spotify.com/v1/me/player/currently-playing?market=from_token");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var resp = await Http.SendAsync(req, ct);
-            if (resp.StatusCode == HttpStatusCode.NoContent || !resp.IsSuccessStatusCode) return (null, null);
+            if (resp.StatusCode == HttpStatusCode.NoContent || !resp.IsSuccessStatusCode) return (null, null, 0);
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
             if (doc.RootElement.TryGetProperty("item", out var item) && item.ValueKind == JsonValueKind.Object
                 && item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
             {
                 string? name = item.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String ? nm.GetString() : null;
-                return (id.GetString(), name);
+                long dur = item.TryGetProperty("duration_ms", out var dm) && dm.ValueKind == JsonValueKind.Number ? dm.GetInt64() : 0;
+                return (id.GetString(), name, dur);
             }
         }
         catch { }
-        return (null, null);
+        return (null, null, 0);
     }
 
     private static bool TitleMatches(string a, string b)
