@@ -14,10 +14,14 @@ public readonly record struct LyricLine(long TimeMs, string Text)
     public bool Synced => TimeMs >= 0;
 }
 
-public sealed record LyricsResult(IReadOnlyList<LyricLine> Lines, bool Synced, bool Instrumental, bool Found, string Source)
+public sealed record LyricsResult(IReadOnlyList<LyricLine> Lines, bool Synced, bool Instrumental, bool Found, string Source, bool Guess = false)
 {
     public static readonly LyricsResult None = new(Array.Empty<LyricLine>(), false, false, false, "");
     public static LyricsResult Inst(string src) => new(Array.Empty<LyricLine>(), false, true, true, src);
+    // Inferred instrumental: the track was confidently matched but has no lyrics of any kind anywhere, and the
+    // provider's instrumental flag was missing. Probably instrumental — but keep a search affordance in case it's
+    // really a vocal song no source has (so we don't trap the user).
+    public static LyricsResult InstGuess(string src) => new(Array.Empty<LyricLine>(), false, true, true, src, true);
 }
 
 /// <summary>
@@ -137,9 +141,11 @@ public static class LyricsProvider
         if (LooksInstrumental(t.Title) || LooksInstrumental(t.Album)) return LyricsResult.Inst("title");
 
         // Musixmatch is fast (~1s) and authoritative — it's the database Spotify itself uses. Try it first;
-        // synced → done, and it also flags instrumentals (so many piano/score tracks resolve here, no search).
+        // synced → done, and a DEFINITIVE instrumental flag resolves piano/score tracks here with no search.
+        // An *inferred* instrumental (matched, zero lyrics, flag missing) doesn't short-circuit — a Korean vocal
+        // song Musixmatch lacks might still be on Bugs/Genie, so let the race run first.
         var mxm = await Safe(TryMusixmatchAsync(t, ct));
-        if (mxm.Synced || mxm.Instrumental) return mxm;
+        if (mxm.Synced || (mxm.Instrumental && !mxm.Guess)) return mxm;
 
         // No synced yet → race the Korean synced services (Bugs + Genie license lyrics directly, so they cover
         // the K-pop / Korean long tail Musixmatch misses; fast), Genius (fast, plain) and a hard-capped LRCLIB
@@ -163,7 +169,8 @@ public static class LyricsProvider
             if (r.Found && !r.Instrumental && !plain.Found) plain = r;
             if (koreanLeft == 0 && plain.Found) return plain;                 // both Korean sources done, no synced → use plain
         }
-        return plain.Found ? plain : LyricsResult.None;
+        if (plain.Found) return plain;
+        return mxm.Instrumental ? mxm : LyricsResult.None; // nobody had lyrics → if Musixmatch matched with none, it's probably instrumental
     }
 
     private static bool LooksInstrumental(string s)
@@ -269,13 +276,17 @@ public static class LyricsProvider
 
             // Validate the fuzzy match — Musixmatch will happily return a *different* popular song for an
             // obscure query. Require the matched track's duration (or, failing that, its title) to line up.
+            bool matchedNoLyrics = false;
             if (macro.TryGetProperty("matcher.track.get", out var matcher)
                 && TryBody(matcher, out var mBody)
                 && mBody.TryGetProperty("track", out var track) && track.ValueKind == JsonValueKind.Object)
             {
                 if (!MxmTrackMatches(track, t)) return (LyricsResult.None, false); // wrong song → don't show its lyrics
-                if (track.TryGetProperty("instrumental", out var ins) && ins.ValueKind == JsonValueKind.Number && ins.GetInt32() == 1)
-                    return (LyricsResult.Inst("musixmatch"), false);
+                int Flag(string n) => track.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+                if (Flag("instrumental") == 1) return (LyricsResult.Inst("musixmatch"), false); // definitively instrumental
+                // Confidently matched, but no lyrics of ANY kind → very likely instrumental even if the flag is missing
+                // (Musixmatch sets it inconsistently, e.g. Einaudi "Experience" = instrumental but flag 0).
+                matchedNoLyrics = Flag("has_lyrics") == 0 && Flag("has_subtitles") == 0 && Flag("has_richsync") == 0;
             }
 
             // synced subtitles → subtitle_list[0].subtitle.subtitle_body is itself a JSON array string
@@ -302,6 +313,8 @@ public static class LyricsProvider
                     if (lines.Count > 0) return (new LyricsResult(lines, false, false, true, "musixmatch"), false);
                 }
             }
+
+            if (matchedNoLyrics) return (LyricsResult.InstGuess("musixmatch"), false); // matched well, zero lyrics → probably instrumental
         }
         catch { }
         return (LyricsResult.None, false);

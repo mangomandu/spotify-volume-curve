@@ -159,7 +159,7 @@ public sealed class LyricsForm : Form
         _status = res.Instrumental ? Loc.T("연주곡 (가사 없음)", "Instrumental")
                : !res.Found ? Loc.T("가사를 찾지 못했어요", "No lyrics found")
                : "";
-        _canSearch = !res.Found && !res.Instrumental; // genuinely missing → let the user search the web for it
+        _canSearch = (!res.Found && !res.Instrumental) || (res.Instrumental && res.Guess); // missing, or a *guessed* instrumental
         Invalidate();
     }
 
@@ -346,9 +346,13 @@ public sealed class LyricsForm : Form
             {
                 using var eb = new SolidBrush(Color.FromArgb(210, 206, 200));
                 using var ib = new SolidBrush(TextDim);
-                g.DrawString("🎹🐈", EmojiFont, eb, new RectangleF(Pad, vp.Top + vp.Height / 2f - 58, vp.Width - 2 * Pad, 54), CenterFmt);
-                g.DrawString(Loc.T("연주곡 · 가사 없음", "Instrumental · no lyrics"), StatusFont, ib,
-                    new RectangleF(Pad, vp.Top + vp.Height / 2f + 6, vp.Width - 2 * Pad, 28), CenterFmt);
+                bool guess = _lyrics.Guess;
+                float midY = vp.Top + vp.Height / 2f;
+                g.DrawString("🎹🐈", EmojiFont, eb, new RectangleF(Pad, midY - (guess ? 86 : 58), vp.Width - 2 * Pad, 54), CenterFmt);
+                g.DrawString(guess ? Loc.T("연주곡인 듯 · 가사 없음", "Looks instrumental · no lyrics")
+                                   : Loc.T("연주곡 · 가사 없음", "Instrumental · no lyrics"),
+                    StatusFont, ib, new RectangleF(Pad, guess ? midY - 30 : midY + 6, vp.Width - 2 * Pad, 26), CenterFmt);
+                if (guess && _canSearch) DrawSearchButton(g, vp); else _searchBtnRect = RectangleF.Empty;
                 return;
             }
             using (var stb = new SolidBrush(TextDim))
