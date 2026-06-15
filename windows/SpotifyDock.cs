@@ -22,7 +22,7 @@ public sealed class SpotifyDock : IDisposable
     private IntPtr _hwnd;
     private uint _pid;
     private bool _enabled, _dragging, _hasAnchor;
-    private Point _lastAnchor;
+    private Rectangle _lastSpotify;
     private Point? _offset;
 
     /// <summary>User dragged the window → new offset relative to Spotify's top-left (persist this).</summary>
@@ -54,7 +54,8 @@ public sealed class SpotifyDock : IDisposable
         _dragging = false;
         if (_hasAnchor)
         {
-            _offset = new Point(_form.Left - _lastAnchor.X, _form.Top - _lastAnchor.Y);
+            // store relative to Spotify's bottom-right corner so resizing Spotify moves the window too
+            _offset = new Point(_form.Left - _lastSpotify.Right, _form.Top - _lastSpotify.Bottom);
             OffsetChanged?.Invoke(_offset.Value);
         }
     }
@@ -96,11 +97,13 @@ public sealed class SpotifyDock : IDisposable
         if (!_enabled || _dragging || !_form.IsHandleCreated) return;
         if (!SpotifyWindowTracker.TryGetBounds(_hwnd, _pid, out var r)) return;
 
-        _lastAnchor = new Point(r.Left, r.Top);
+        _lastSpotify = r;
         _hasAnchor = true;
         var screen = Screen.FromRectangle(r).WorkingArea;
+        // Anchor to Spotify's bottom-right corner → the window follows when Spotify is *resized*
+        // (its right/bottom edges move), not only when it's dragged.
         Point target = _offset is Point off
-            ? new Point(r.Left + off.X, r.Top + off.Y)
+            ? new Point(r.Right + off.X, r.Bottom + off.Y)
             : _defaultPlacement(r, _form.Size);
         _form.Location = new Point(
             Clamp(target.X, screen.Left + 8, screen.Right - _form.Width - 8, screen.Left),
