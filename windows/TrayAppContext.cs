@@ -33,7 +33,6 @@ public sealed class TrayAppContext : ApplicationContext
     private ToolStripMenuItem _startupItem = null!;
     private ToolStripMenuItem _overlayItem = null!;
     private ToolStripMenuItem _lyricsItem = null!;
-    private ToolStripMenuItem _lyricsDockItem = null!;
     private readonly List<ToolStripMenuItem> _presetItems = new();
     private readonly List<ToolStripMenuItem> _popupItems = new(); // "좁을 때 팝업" toggle mirrored in both menus
     private readonly System.Windows.Forms.Timer _syncTimer = new() { Interval = 200 }; // poll Spotify for external volume changes
@@ -98,7 +97,6 @@ public sealed class TrayAppContext : ApplicationContext
         };
         if (_settings.HasLyricsDockOffset)
             _lyricsForm.SetDockOffset(new Point(_settings.LyricsDockOffsetX, _settings.LyricsDockOffsetY));
-        _lyricsForm.SetDock(_settings.LyricsDocked);
 
         // Reuse a saved Musixmatch token (token.get is rate-limited); persist a freshly minted one.
         LyricsProvider.InitToken(_settings.MusixmatchToken, tok =>
@@ -185,16 +183,6 @@ public sealed class TrayAppContext : ApplicationContext
         SettingsStore.Save(_settings);
     }
 
-    private void ToggleLyricsDock()
-    {
-        bool enable = !_settings.LyricsDocked;
-        _settings.LyricsDocked = enable;
-        _lyricsDockItem.Checked = enable;
-        _lyricsForm.SetDock(enable);
-        SettingsStore.Save(_settings);
-        if (enable && !_settings.LyricsEnabled) ToggleLyrics(); // docking implies you want the lyrics shown
-    }
-
     private void RestoreLyricsBounds()
     {
         if (_settings.HasLyricsBounds
@@ -269,17 +257,11 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
 
         // --- floating lyrics window ---
-        _lyricsItem = new ToolStripMenuItem(Loc.T("가사 (떠 있는 창)", "Lyrics (floating window)"), null, (_, _) => ToggleLyrics())
+        _lyricsItem = new ToolStripMenuItem(Loc.T("가사 (Spotify 옆에)", "Lyrics (beside Spotify)"), null, (_, _) => ToggleLyrics())
         {
             Checked = _settings.LyricsEnabled,
         };
         menu.Items.Add(_lyricsItem);
-
-        _lyricsDockItem = new ToolStripMenuItem(Loc.T("   └ Spotify 창에 붙이기", "   └ Dock to the Spotify window"), null, (_, _) => ToggleLyricsDock())
-        {
-            Checked = _settings.LyricsDocked,
-        };
-        menu.Items.Add(_lyricsDockItem);
 
         menu.Items.Add(new ToolStripSeparator());
 

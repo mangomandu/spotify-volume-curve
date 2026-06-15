@@ -20,7 +20,6 @@ public sealed class AppSettings
     public int LyricsY { get; set; }
     public int LyricsW { get; set; }
     public int LyricsH { get; set; }
-    public bool LyricsDocked { get; set; }            // lyrics window follows the Spotify window
     public bool HasLyricsDockOffset { get; set; }
     public int LyricsDockOffsetX { get; set; }
     public int LyricsDockOffsetY { get; set; }

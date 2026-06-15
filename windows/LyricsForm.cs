@@ -29,7 +29,6 @@ public sealed class LyricsForm : Form
     private readonly Label _close = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 }; // ~25fps; OnTick only repaints when something moves
     private readonly SpotifyDock _dock;
-    private bool _dockWanted;
 
     private LyricsResult _lyrics = LyricsResult.None;
     private NowPlaying.TrackInfo? _track;
@@ -53,14 +52,6 @@ public sealed class LyricsForm : Form
     public event Action<Point>? DockOffsetChanged; // user dragged while docked → persist the new offset
 
     public void SetDockOffset(Point? offset) => _dock.SetOffset(offset);
-
-    /// <summary>Turn docking (follow the Spotify window) on/off. Only tracks while the window is shown.</summary>
-    public void SetDock(bool on)
-    {
-        _dockWanted = on;
-        _dock.SetEnabled(on && Visible);
-        if (on && Visible) _dock.Reposition();
-    }
 
     public LyricsForm(NowPlaying np)
     {
@@ -116,8 +107,7 @@ public sealed class LyricsForm : Form
         {
             LyricsProvider.WarmUp(); // mint the Musixmatch token now so the first lookup isn't slowed by it
             _timer.Start();
-            Show();
-            _dock.SetEnabled(_dockWanted); // start following Spotify if docking is on
+            _dock.SetEnabled(true); // follows Spotify + shows/hides with it (the dock decides visibility by presence)
             KickFetch(); // (re)load lyrics for whatever's playing now
         }
         else
@@ -127,6 +117,12 @@ public sealed class LyricsForm : Form
             _dock.SetEnabled(false);
             Hide();
         }
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible && _timer.Enabled) KickFetch(); // (re)shown beside Spotify → load the current track's lyrics
     }
 
     // ----- track / fetch -----

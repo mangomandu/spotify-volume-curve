@@ -59,8 +59,8 @@ public sealed class SpotifyDock : IDisposable
         }
     }
 
-    // Low-frequency: detect Spotify presence, (re)install the move hook, follow it. Leaves the window where
-    // it is when Spotify is gone (it's a floating lyrics window — don't yank it away).
+    // Low-frequency: detect Spotify presence, (re)install the move hook, and show/hide the window with Spotify —
+    // it follows Spotify while visible and hides when Spotify is minimized/closed.
     private void PresenceTick()
     {
         if (!_enabled) return;
@@ -73,9 +73,14 @@ public sealed class SpotifyDock : IDisposable
         if (ok)
         {
             if (_hookedPid != _pid) InstallHook();
+            if (!_form.Visible) _form.Show();   // Spotify visible → show beside it
             Reposition();
         }
-        else { UninstallHook(); _hasAnchor = false; }
+        else
+        {
+            UninstallHook(); _hasAnchor = false;
+            if (_form.Visible) _form.Hide();     // Spotify minimized/closed → hide with it
+        }
     }
 
     // Event-driven: fires exactly when the Spotify window moves → smooth, refresh-independent.
