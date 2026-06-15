@@ -417,13 +417,14 @@ public sealed class OverlayBarForm : Form
 
     private void OnWinEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
-        if (!_active || IsDisposed || hwnd != _spotifyHwnd) return;
+        // Only the window itself moving/resizing matters (idObject == 0). Spotify fires a storm of
+        // LOCATIONCHANGE events for child elements (the progress bar ticking during playback); those
+        // don't move our rail, so reacting to them just burned CPU repositioning on every frame.
+        if (!_active || IsDisposed || hwnd != _spotifyHwnd || idObject != 0 || idChild != 0) return;
         if (SpotifyWindowTracker.TryGetBounds(_spotifyHwnd, _spotifyPid, out var r))
         {
-            if (idObject == 0 && idChild == 0 && _spotifySize != r.Size) // window resized → cached slider rect is stale until settle
-            {
+            if (_spotifySize != r.Size) // window resized → cached slider rect is stale until settle
                 NoteSpotifySizeChanged(r.Size);
-            }
             Reposition(r);
         }
     }
