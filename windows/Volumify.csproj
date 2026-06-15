@@ -13,6 +13,13 @@
     <AssemblyName>Volumify</AssemblyName>
     <RootNamespace>Volumify</RootNamespace>
     <Version>0.3.0</Version>
+    <!-- Version-info resource baked into the exe → Task Manager / Volume Mixer show "Volumify",
+         not the apphost default "Microsoft .NET Host". -->
+    <Product>Volumify</Product>
+    <AssemblyTitle>Volumify</AssemblyTitle>
+    <Company>Volumify</Company>
+    <Authors>Volumify</Authors>
+    <Description>Remaps Spotify's volume curve and floats synced lyrics — no client patching.</Description>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>appicon.ico</ApplicationIcon>
   </PropertyGroup>
