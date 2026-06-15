@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// A tiny volume bar that overlays Spotify's own volume slider — matched to its position and

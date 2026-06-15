@@ -1,4 +1,4 @@
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Perceptual volume curve: maps a UI slider position (0..1) to an actual gain (0..1)

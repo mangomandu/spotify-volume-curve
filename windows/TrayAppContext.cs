@@ -1,4 +1,4 @@
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Tray application: owns the shared <see cref="VolumeModel"/>, the NotifyIcon, the overlay

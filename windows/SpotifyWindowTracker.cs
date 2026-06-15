@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>Locates and tracks the Spotify main window so the control panel can dock to it.</summary>
 public static class SpotifyWindowTracker

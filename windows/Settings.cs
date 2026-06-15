@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 public sealed class AppSettings
 {
@@ -17,20 +17,23 @@ public sealed class AppSettings
     public string Language { get; set; } = ""; // "ko" / "en"; empty = auto-detect from the OS on first run
 }
 
-/// <summary>Persists settings to %APPDATA%\SpotifyLinearVolume\settings.json (best-effort).</summary>
+/// <summary>Persists settings to %APPDATA%\Volumify\settings.json (best-effort).</summary>
 public static class SettingsStore
 {
-    private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SpotifyLinearVolume");
+    private static readonly string AppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+    private static readonly string Dir = Path.Combine(AppData, "Volumify");
     private static readonly string FilePath = Path.Combine(Dir, "settings.json");
+    // Pre-rename location (the app used to be "SpotifyLinearVolume") — read it when the new file is absent so upgrades keep settings.
+    private static readonly string LegacyFilePath = Path.Combine(AppData, "SpotifyLinearVolume", "settings.json");
 
     public static AppSettings Load()
     {
         try
         {
-            if (File.Exists(FilePath))
+            string path = File.Exists(FilePath) ? FilePath : LegacyFilePath;
+            if (File.Exists(path))
             {
-                var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath));
+                var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path));
                 if (loaded != null) return loaded;
             }
         }

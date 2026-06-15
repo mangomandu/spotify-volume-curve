@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Windows.Automation;
 using NAudio.CoreAudioApi;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Drives Spotify's OWN volume slider via UI Automation (the RangeValue pattern), so the change

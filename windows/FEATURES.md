@@ -37,7 +37,7 @@
 - [x] **v0.1.0 릴리스** — self-contained 단일 exe를 GitHub Releases에 배포 (빌드 불필요)
 - [x] 볼륨 곡선 `gain = position^p` + 프리셋(0.35~2.0) + 트레이/핫키(Ctrl+Alt+↑/↓)
   - 화면 중앙 OSD(% 플래시)는 제거함 — 트레이 툴팁/오버레이 바/팝업 %로 피드백 충분
-- [x] 설정 저장(%APPDATA%\SpotifyLinearVolume\settings.json), 시작프로그램 자동실행
+- [x] 설정 저장(%APPDATA%\Volumify\settings.json), 시작프로그램 자동실행
 - [x] 컨트롤 패널(둥근 보더리스+초록, 커브 그래프, 접기/펼치기, 드래그·리사이즈)
 - [x] **Spotify 창에 붙기(Dock)** 모드 + **볼륨 슬라이더 위 오버레이** 모드 (이제 동시 사용 가능)
 - [x] **오버레이 정렬 완성**: 아래 "오버레이 정렬" 참고. 좌우폭/버튼 가림 문제 해결됨.

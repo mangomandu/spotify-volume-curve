@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Live volume curve: a green line for felt loudness vs slider position, a dashed diagonal

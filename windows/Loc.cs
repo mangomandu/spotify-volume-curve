@@ -1,4 +1,4 @@
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 public enum AppLang { Korean, English }
 

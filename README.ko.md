@@ -64,7 +64,7 @@ gain = x ^ p
 - 🧲 **스포티파이에 붙는 두 가지 방식** — 따로 써도, 둘 다 켜도 돼요:
   - **오버레이** — 네이티브 레일 위에 얹히는 얇은 바 (초록 링으로 스포티파이 게 아니라 Volumify 것임을 표시). 레일이 너무 작아지면 뜨는 **호버 팝업** 옵션 포함.
   - **독 패널** — 곡선 패널이 스포티파이 창 옆에 붙어서 따라다녀요.
-- 💾 **설정 기억** (`%APPDATA%\SpotifyLinearVolume\settings.json`) + **Windows 시작 시 자동 실행** 옵션.
+- 💾 **설정 기억** (`%APPDATA%\Volumify\settings.json`) + **Windows 시작 시 자동 실행** 옵션.
 - 📦 **단일 자체 포함 `.exe`** — 설치 관리자도, 챙길 런타임도 없음.
 
 ## 🔒 안전한 설계
@@ -82,7 +82,7 @@ Windows 앱은 [`windows/`](windows)에 있어요. 소스에서 빌드하려면 
 ```powershell
 cd windows
 dotnet build -c Release
-.\bin\Release\net8.0-windows\SpotifyLinearVolume.exe
+.\bin\Release\net8.0-windows\Volumify.exe
 ```
 
 <details>
@@ -95,7 +95,7 @@ dotnet publish -c Release -r win-x64 --self-contained `
   -p:EnableCompressionInSingleFile=true
 ```
 
-독립 실행형 `SpotifyLinearVolume.exe`는 `windows\bin\Release\net8.0-windows\win-x64\publish\`에 생겨요. `v*` 태그를 push하면 [GitHub Actions](.github/workflows/release.yml)가 자동으로 빌드·릴리스도 해줘요.
+독립 실행형 `Volumify.exe`는 `windows\bin\Release\net8.0-windows\win-x64\publish\`에 생겨요.
 </details>
 
 ## 🧩 기술

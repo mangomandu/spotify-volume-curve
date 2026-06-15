@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Shared volume state (position + curve p) and the single source of truth that the tray menu,

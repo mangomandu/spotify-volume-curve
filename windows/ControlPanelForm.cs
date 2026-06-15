@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Borderless rounded control window: curve graph + %/dB readout + preset pills. Optionally docks

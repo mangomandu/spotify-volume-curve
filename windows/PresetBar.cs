@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>A row of rounded "pill" buttons for picking a curve preset. Active pill = green.</summary>
 public sealed class PresetBar : Panel

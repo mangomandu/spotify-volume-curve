@@ -64,7 +64,7 @@ Spotify's built‑in curve is **top‑heavy** (≈ `x⁴`): park the slider at t
 - 🧲 **Two ways to ride along with Spotify** — use either, or both at once:
   - **Overlay** — a slim bar right on the native rail (a green ring marks it as Volumify's, not Spotify's), with an optional **hover fly‑out** that appears only when the rail gets too small to drag.
   - **Docked panel** — the curve panel snaps beside the Spotify window and follows it around.
-- 💾 **Remembers everything** (`%APPDATA%\SpotifyLinearVolume\settings.json`) and optional **run at startup**.
+- 💾 **Remembers everything** (`%APPDATA%\Volumify\settings.json`) and optional **run at startup**.
 - 📦 **Single self‑contained `.exe`** — no installer, no runtime to chase.
 
 ## 🔒 Safe by design
@@ -82,7 +82,7 @@ The Windows app lives in [`windows/`](windows). To build from source you need th
 ```powershell
 cd windows
 dotnet build -c Release
-.\bin\Release\net8.0-windows\SpotifyLinearVolume.exe
+.\bin\Release\net8.0-windows\Volumify.exe
 ```
 
 <details>
@@ -95,7 +95,7 @@ dotnet publish -c Release -r win-x64 --self-contained `
   -p:EnableCompressionInSingleFile=true
 ```
 
-The standalone `SpotifyLinearVolume.exe` lands in `windows\bin\Release\net8.0-windows\win-x64\publish\`. Pushing a `v*` tag also builds and publishes a release automatically via [GitHub Actions](.github/workflows/release.yml).
+The standalone `Volumify.exe` lands in `windows\bin\Release\net8.0-windows\win-x64\publish\`.
 </details>
 
 ## 🧩 Tech

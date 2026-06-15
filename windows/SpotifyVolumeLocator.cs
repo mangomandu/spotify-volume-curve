@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// Locates Spotify's native volume slider for the overlay, using only UI Automation.

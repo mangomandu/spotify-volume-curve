@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>
 /// A comfortable fly-out volume slider that pops up just above Spotify's playbar when you hover

@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace SpotifyLinearVolume;
+namespace Volumify;
 
 /// <summary>Slim horizontal volume bar. Drag to set position. The track is inset from the control
 /// edges by <see cref="EdgePad"/> and the knob centre travels the full track [pad, W-pad], so it
