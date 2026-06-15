@@ -25,6 +25,8 @@ public sealed class LyricsForm : Form
     private readonly NowPlaying _np;
     private readonly Label _close = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 }; // ~25fps; OnTick only repaints when something moves
+    private readonly SpotifyDock _dock;
+    private bool _dockWanted;
 
     private LyricsResult _lyrics = LyricsResult.None;
     private NowPlaying.TrackInfo? _track;
@@ -42,6 +44,17 @@ public sealed class LyricsForm : Form
     private long _userScrollTick;
 
     public event Action? CloseRequested;
+    public event Action<Point>? DockOffsetChanged; // user dragged while docked → persist the new offset
+
+    public void SetDockOffset(Point? offset) => _dock.SetOffset(offset);
+
+    /// <summary>Turn docking (follow the Spotify window) on/off. Only tracks while the window is shown.</summary>
+    public void SetDock(bool on)
+    {
+        _dockWanted = on;
+        _dock.SetEnabled(on && Visible);
+        if (on && Visible) _dock.Reposition();
+    }
 
     public LyricsForm(NowPlaying np)
     {
@@ -62,6 +75,10 @@ public sealed class LyricsForm : Form
 
         _timer.Tick += (_, _) => OnTick();
         _np.TrackChanged += OnTrackChangedAsync;
+
+        // Dock default: sit just off Spotify's right edge, bottom-aligned (near the volume controls).
+        _dock = new SpotifyDock(this, (r, size) => new Point(r.Right + 8, r.Bottom - size.Height));
+        _dock.OffsetChanged += o => DockOffsetChanged?.Invoke(o);
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -94,12 +111,14 @@ public sealed class LyricsForm : Form
             LyricsProvider.WarmUp(); // mint the Musixmatch token now so the first lookup isn't slowed by it
             _timer.Start();
             Show();
+            _dock.SetEnabled(_dockWanted); // start following Spotify if docking is on
             KickFetch(); // (re)load lyrics for whatever's playing now
         }
         else
         {
             _timer.Stop();
             _fetchCts?.Cancel();
+            _dock.SetEnabled(false);
             Hide();
         }
     }
@@ -340,7 +359,7 @@ public sealed class LyricsForm : Form
     // ----- borderless drag / resize -----
     protected override void WndProc(ref Message m)
     {
-        const int WM_NCHITTEST = 0x0084, WM_EXITSIZEMOVE = 0x0232;
+        const int WM_NCHITTEST = 0x0084, WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232;
         if (m.Msg == WM_NCHITTEST)
         {
             long lp = m.LParam.ToInt64();
@@ -348,8 +367,9 @@ public sealed class LyricsForm : Form
             m.Result = (IntPtr)HitTest(p);
             return;
         }
+        if (m.Msg == WM_ENTERSIZEMOVE) _dock.NotifyDragStart();
         base.WndProc(ref m);
-        if (m.Msg == WM_EXITSIZEMOVE) { _layoutDirty = true; BoundsChanged?.Invoke(Bounds); Invalidate(); }
+        if (m.Msg == WM_EXITSIZEMOVE) { _dock.NotifyDragEnd(); _layoutDirty = true; BoundsChanged?.Invoke(Bounds); Invalidate(); }
     }
 
     public event Action<Rectangle>? BoundsChanged;
@@ -382,7 +402,7 @@ public sealed class LyricsForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _timer.Stop(); _timer.Dispose(); _fetchCts?.Cancel(); _np.TrackChanged -= OnTrackChangedAsync; }
+        if (disposing) { _timer.Stop(); _timer.Dispose(); _fetchCts?.Cancel(); _np.TrackChanged -= OnTrackChangedAsync; _dock.Dispose(); }
         base.Dispose(disposing);
     }
 }
