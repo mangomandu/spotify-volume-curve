@@ -44,8 +44,10 @@ public static class LyricsProvider
 
     private static readonly object _cacheGate = new();
     private static readonly Dictionary<string, LyricsResult> _cache = new();
+    // The "v2" segment is a cache version — bump it whenever match/parse logic changes so stale results
+    // (e.g. a wrong song cached before match validation existed) are ignored instead of served forever.
     private static readonly string DiskCacheDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Volumify", "lyrics");
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Volumify", "lyrics", "v2");
 
     // Musixmatch needs a "user token". token.get is heavily rate-limited (a few mints trip a captcha),
     // so we mint ONE and reuse it — persisted across launches via InitToken. null = unknown,
@@ -418,7 +420,9 @@ public static class LyricsProvider
                     if (!(h.TryGetProperty("type", out var ty) && ty.GetString() == "song")) continue;
                     var res = h.GetProperty("result");
                     string gotTitle = res.TryGetProperty("title", out var tt) ? tt.GetString() ?? "" : "";
-                    if (!RoughTitleMatch(t.Title, gotTitle)) continue; // skip unrelated songs (obscure-query mismatches)
+                    string gotArtist = res.TryGetProperty("primary_artist", out var pa) && pa.TryGetProperty("name", out var pn) ? pn.GetString() ?? "" : "";
+                    if (!RoughTitleMatch(t.Title, gotTitle)) continue; // wrong title → skip
+                    if (t.Artist.Length > 0 && gotArtist.Length > 0 && !RoughTitleMatch(t.Artist, gotArtist)) continue; // different artist → skip
                     if (res.TryGetProperty("url", out var u)) { url = u.GetString(); break; }
                 }
                 if (url != null) break;
@@ -523,9 +527,15 @@ public static class LyricsProvider
     {
         long wantSec = t.DurationMs / 1000;
         long gotSec = track.TryGetProperty("track_length", out var tl) && tl.ValueKind == JsonValueKind.Number ? tl.GetInt64() : 0;
-        if (wantSec > 0 && gotSec > 0) return Math.Abs(wantSec - gotSec) <= 12; // duration is the strong signal
         string gotTitle = track.TryGetProperty("track_name", out var tn) ? tn.GetString() ?? "" : "";
-        return gotTitle.Length == 0 || RoughTitleMatch(t.Title, gotTitle);      // no duration → fall back to title
+        string gotArtist = track.TryGetProperty("artist_name", out var an) ? an.GetString() ?? "" : "";
+
+        bool durOk = wantSec > 0 && gotSec > 0 && Math.Abs(wantSec - gotSec) <= 12;
+        bool titleOk = gotTitle.Length == 0 || RoughTitleMatch(t.Title, gotTitle);
+        bool artistOk = t.Artist.Length == 0 || gotArtist.Length == 0 || RoughTitleMatch(t.Artist, gotArtist);
+
+        // Trust a near-exact duration (then one name lining up is enough); otherwise both names must match.
+        return durOk ? (titleOk || artistOk) : (titleOk && artistOk);
     }
 
     private static bool RoughTitleMatch(string want, string got)
