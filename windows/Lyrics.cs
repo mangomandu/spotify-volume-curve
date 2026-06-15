@@ -190,7 +190,7 @@ public static class LyricsProvider
         var json = await MxmGetAsync(url, ct);
         if (json == null) return LyricsResult.None;
 
-        var (result, authFailed) = ParseMusixmatch(json);
+        var (result, authFailed) = ParseMusixmatch(json, t);
         if (authFailed && _mxmToken == token) _mxmToken = null; // invalidate only the token THIS request used → re-mint next lookup
         return result;
     }
@@ -234,7 +234,7 @@ public static class LyricsProvider
     }
 
     /// <summary>Parse macro.subtitles.get. Returns (result, authFailed); authFailed flags a stale token to re-mint.</summary>
-    private static (LyricsResult result, bool authFailed) ParseMusixmatch(string json)
+    private static (LyricsResult result, bool authFailed) ParseMusixmatch(string json, NowPlaying.TrackInfo t)
     {
         try
         {
@@ -245,12 +245,16 @@ public static class LyricsProvider
             if (!msg.TryGetProperty("body", out var body) || body.ValueKind != JsonValueKind.Object) return (LyricsResult.None, false);
             if (!body.TryGetProperty("macro_calls", out var macro) || macro.ValueKind != JsonValueKind.Object) return (LyricsResult.None, false);
 
-            // track metadata — instrumental tracks have no lyrics by definition
+            // Validate the fuzzy match — Musixmatch will happily return a *different* popular song for an
+            // obscure query. Require the matched track's duration (or, failing that, its title) to line up.
             if (macro.TryGetProperty("matcher.track.get", out var matcher)
                 && TryBody(matcher, out var mBody)
-                && mBody.TryGetProperty("track", out var track) && track.ValueKind == JsonValueKind.Object
-                && track.TryGetProperty("instrumental", out var ins) && ins.ValueKind == JsonValueKind.Number && ins.GetInt32() == 1)
-                return (LyricsResult.Inst("musixmatch"), false);
+                && mBody.TryGetProperty("track", out var track) && track.ValueKind == JsonValueKind.Object)
+            {
+                if (!MxmTrackMatches(track, t)) return (LyricsResult.None, false); // wrong song → don't show its lyrics
+                if (track.TryGetProperty("instrumental", out var ins) && ins.ValueKind == JsonValueKind.Number && ins.GetInt32() == 1)
+                    return (LyricsResult.Inst("musixmatch"), false);
+            }
 
             // synced subtitles → subtitle_list[0].subtitle.subtitle_body is itself a JSON array string
             if (macro.TryGetProperty("track.subtitles.get", out var subs)
@@ -411,9 +415,11 @@ public static class LyricsProvider
                 if (!sec.TryGetProperty("hits", out var hits)) continue;
                 foreach (var h in hits.EnumerateArray())
                 {
-                    if (h.TryGetProperty("type", out var ty) && ty.GetString() == "song"
-                        && h.GetProperty("result").TryGetProperty("url", out var u))
-                    { url = u.GetString(); break; }
+                    if (!(h.TryGetProperty("type", out var ty) && ty.GetString() == "song")) continue;
+                    var res = h.GetProperty("result");
+                    string gotTitle = res.TryGetProperty("title", out var tt) ? tt.GetString() ?? "" : "";
+                    if (!RoughTitleMatch(t.Title, gotTitle)) continue; // skip unrelated songs (obscure-query mismatches)
+                    if (res.TryGetProperty("url", out var u)) { url = u.GetString(); break; }
                 }
                 if (url != null) break;
             }
@@ -510,6 +516,36 @@ public static class LyricsProvider
         while (list.Count > 0 && list[0].Text.Length == 0) list.RemoveAt(0);
         while (list.Count > 0 && list[^1].Text.Length == 0) list.RemoveAt(list.Count - 1);
         return list;
+    }
+
+    // ---------- match validation (don't show a different song's lyrics for an obscure query) ----------
+    private static bool MxmTrackMatches(JsonElement track, NowPlaying.TrackInfo t)
+    {
+        long wantSec = t.DurationMs / 1000;
+        long gotSec = track.TryGetProperty("track_length", out var tl) && tl.ValueKind == JsonValueKind.Number ? tl.GetInt64() : 0;
+        if (wantSec > 0 && gotSec > 0) return Math.Abs(wantSec - gotSec) <= 12; // duration is the strong signal
+        string gotTitle = track.TryGetProperty("track_name", out var tn) ? tn.GetString() ?? "" : "";
+        return gotTitle.Length == 0 || RoughTitleMatch(t.Title, gotTitle);      // no duration → fall back to title
+    }
+
+    private static bool RoughTitleMatch(string want, string got)
+    {
+        want = NormalizeTitle(want); got = NormalizeTitle(got);
+        if (want.Length == 0 || got.Length == 0) return false;
+        if (want.Contains(got) || got.Contains(want)) return true;
+        var a = want.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var b = new HashSet<string>(got.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        int shared = a.Count(b.Contains);
+        return shared >= Math.Max(1, (int)Math.Ceiling(Math.Min(a.Length, b.Count) * 0.6));
+    }
+
+    private static string NormalizeTitle(string s)
+    {
+        s = (s ?? "").ToLowerInvariant();
+        s = Regex.Replace(s, @"\(.*?\)|\[.*?\]", " ");                              // drop (feat …), [remix] …
+        s = Regex.Replace(s, @"\b(feat|ft|featuring|prod|remix|inst|instrumental)\b\.?", " ");
+        s = Regex.Replace(s, @"[^a-z0-9가-힣\s]", " ");                             // keep letters / digits / Hangul
+        return Regex.Replace(s, @"\s+", " ").Trim();
     }
 
     private static string Enc(string s) => Uri.EscapeDataString(s ?? "");
