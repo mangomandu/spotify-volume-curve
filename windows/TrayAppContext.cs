@@ -110,7 +110,7 @@ public sealed class TrayAppContext : ApplicationContext
         if (_settings.HasLyricsDockOffset)
             _lyricsForm.SetDockOffset(new Point(_settings.LyricsDockOffsetX, _settings.LyricsDockOffsetY));
         _lyricsForm.SetKeepWhenMinimized(_settings.LyricsKeepWhenMinimized);
-        _lyricsForm.TrackIdProvider = ct => _spotifyAuth.IsLinked ? _spotifyAuth.GetCurrentTrackIdAsync(ct) : Task.FromResult<string?>(null);
+        _lyricsForm.TrackIdProvider = (title, ct) => _spotifyAuth.IsLinked ? _spotifyAuth.GetCurrentTrackIdAsync(title, ct) : Task.FromResult<string?>(null);
 
         // Repaint every surface live when the accent color changes (the popup picks it up on its next show).
         Theme.AccentChanged += () => { _panel.Invalidate(true); _overlay.Invalidate(true); _lyricsForm.Invalidate(); };
