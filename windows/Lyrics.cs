@@ -221,7 +221,74 @@ public static class LyricsProvider
 
         var (result, authFailed) = ParseMusixmatch(json, t);
         if (authFailed && _mxmToken == token) _mxmToken = null; // invalidate only the token THIS request used → re-mint next lookup
+        if (result.Synced) return result;
+
+        // The matcher sometimes locks onto an instrumental *version* of a vocal song ("Cold (Instrumental)") and
+        // so reports no lyrics. When that happens, search for the vocal version directly and pull its synced lyrics.
+        if (!LooksInstrumental(t.Title) && MxmMatchedInstrumentalVersion(json))
+        {
+            var vocal = await TryMxmSearchSyncedAsync(t, token, ct);
+            if (vocal.Synced) return vocal;
+        }
         return result;
+    }
+
+    private static bool MxmMatchedInstrumentalVersion(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var macro = doc.RootElement.GetProperty("message").GetProperty("body").GetProperty("macro_calls");
+            if (macro.TryGetProperty("matcher.track.get", out var m) && TryBody(m, out var b)
+                && b.TryGetProperty("track", out var tr) && tr.TryGetProperty("track_name", out var tn) && tn.ValueKind == JsonValueKind.String)
+                return LooksInstrumental(tn.GetString() ?? "");
+        }
+        catch { }
+        return false;
+    }
+
+    // The matcher missed the vocal cut → find a version that has subtitles via track.search, then fetch them by id.
+    private static async Task<LyricsResult> TryMxmSearchSyncedAsync(NowPlaying.TrackInfo t, string token, CancellationToken ct)
+    {
+        var url = MxmBase + "track.search?app_id=" + MxmApp + "&format=json&f_has_subtitle=1&page_size=5&s_track_rating=desc"
+                + "&q_track=" + Enc(t.Title) + "&q_artist=" + Enc(t.Artist) + "&usertoken=" + Enc(token);
+        var json = await MxmGetAsync(url, ct);
+        if (json == null) return LyricsResult.None;
+
+        string? commontrackId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.GetProperty("message").GetProperty("body").TryGetProperty("track_list", out var list) && list.ValueKind == JsonValueKind.Array)
+                foreach (var it in list.EnumerateArray())
+                {
+                    if (!it.TryGetProperty("track", out var track)) continue;
+                    if (track.TryGetProperty("instrumental", out var ins) && ins.ValueKind == JsonValueKind.Number && ins.GetInt32() == 1) continue;
+                    if (!MxmTrackMatches(track, t)) continue; // same title+artist(+duration) as what's actually playing
+                    if (track.TryGetProperty("has_subtitles", out var hs) && hs.ValueKind == JsonValueKind.Number && hs.GetInt32() == 1
+                        && track.TryGetProperty("commontrack_id", out var ci) && ci.ValueKind == JsonValueKind.Number)
+                    { commontrackId = ci.GetInt32().ToString(CultureInfo.InvariantCulture); break; }
+                }
+        }
+        catch { }
+        if (commontrackId == null) return LyricsResult.None;
+
+        var subJson = await MxmGetAsync(MxmBase + "track.subtitles.get?app_id=" + MxmApp + "&format=json&subtitle_format=mxm"
+            + "&commontrack_id=" + commontrackId + "&usertoken=" + Enc(token), ct);
+        if (subJson == null) return LyricsResult.None;
+        try
+        {
+            using var doc = JsonDocument.Parse(subJson);
+            if (doc.RootElement.GetProperty("message").GetProperty("body").TryGetProperty("subtitle_list", out var slist)
+                && slist.ValueKind == JsonValueKind.Array && slist.GetArrayLength() > 0
+                && slist[0].TryGetProperty("subtitle", out var sub) && sub.TryGetProperty("subtitle_body", out var sb) && sb.ValueKind == JsonValueKind.String)
+            {
+                var lines = ParseMxmSubtitle(sb.GetString()!);
+                if (lines.Count > 0) return new LyricsResult(lines, true, false, true, "musixmatch");
+            }
+        }
+        catch { }
+        return LyricsResult.None;
     }
 
     private static async Task<string?> GetMxmTokenAsync(CancellationToken ct)
