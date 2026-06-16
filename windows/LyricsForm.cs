@@ -384,26 +384,29 @@ public sealed class LyricsForm : Form
     private RectangleF PinBox() => new(ClientSize.Width - 57, 7, 19, 23);
     private RectangleF PinHit() => RectangleF.Inflate(PinBox(), 6, 5);
 
-    // A location pin with a punched hole: solid when pinned (kept up), clean hollow outline when not (drops with Spotify).
+    // A thumbtack: solid & bright when pinned (kept up), dim hollow outline when not (drops with Spotify).
     private void DrawPin(Graphics g, RectangleF box, bool pinned, bool hover)
     {
         float cx = box.X + box.Width / 2f;
-        float r = box.Width * 0.38f;
-        float cy = box.Y + box.Height * 0.34f;            // centre of the round head
-        float tipY = box.Y + box.Height * 0.97f;          // bottom point
-        float ex = cx + r * (float)Math.Cos(50 * Math.PI / 180), ey = cy + r * (float)Math.Sin(50 * Math.PI / 180);
-        float sx = cx + r * (float)Math.Cos(130 * Math.PI / 180), sy = cy + r * (float)Math.Sin(130 * Math.PI / 180);
+        float capW = box.Width * 0.62f, capH = box.Height * 0.24f, rr = capH * 0.45f;
+        float capTop = box.Y + box.Height * 0.12f, capBot = capTop + capH;
+        float capL = cx - capW / 2f, capR = cx + capW / 2f;
+        float needW = box.Width * 0.20f, nL = cx - needW / 2f, nR = cx + needW / 2f;
+        float tipY = box.Y + box.Height * 0.95f;
 
-        using var path = new GraphicsPath(); // FillMode.Alternate → the inner ellipse reads as a hole
-        path.AddArc(cx - r, cy - r, 2 * r, 2 * r, 130, 280); // round head, gap at the bottom
-        path.AddLine(ex, ey, cx, tipY);                      // right shoulder → tip
-        path.AddLine(cx, tipY, sx, sy);                      // tip → left shoulder
+        using var path = new GraphicsPath();
+        path.AddArc(capL, capTop, 2 * rr, 2 * rr, 180, 90);         // cap: rounded top-left
+        path.AddArc(capR - 2 * rr, capTop, 2 * rr, 2 * rr, 270, 90); //      rounded top-right
+        path.AddLine(capR, capTop + rr, capR, capBot);              // right edge of the cap
+        path.AddLine(capR, capBot, nR, capBot);                     // shoulder in to the needle
+        path.AddLine(nR, capBot, cx, tipY);                         // needle → point
+        path.AddLine(cx, tipY, nL, capBot);                         // point → needle
+        path.AddLine(nL, capBot, capL, capBot);                     // shoulder out
+        path.AddLine(capL, capBot, capL, capTop + rr);              // left edge of the cap
         path.CloseFigure();
-        float holeR = r * 0.40f;
-        path.AddEllipse(cx - holeR, cy - holeR, holeR * 2, holeR * 2);
 
-        Color baseC = pinned ? (AlbumMode ? Color.White : Accent) : Color.FromArgb(152, 148, 142);
-        var c = Color.FromArgb(hover ? 255 : pinned ? 240 : 175, baseC);
+        Color baseC = pinned ? (AlbumMode ? Color.White : Accent) : Color.FromArgb(150, 146, 140);
+        var c = Color.FromArgb(hover ? 255 : pinned ? 245 : 180, baseC);
         if (pinned) { using var b = new SolidBrush(c); g.FillPath(b, path); }
         else { using var pen = new Pen(c, 1.5f) { LineJoin = LineJoin.Round }; g.DrawPath(pen, path); }
     }
