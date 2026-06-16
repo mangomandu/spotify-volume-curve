@@ -20,9 +20,12 @@
 
 ---
 
-Spotify Desktop's volume is **top‑heavy**: the bottom half of the slider does almost nothing, and `80 → 100%` is a cliff. **Volumify** is a tiny tray app that remaps it with a tunable power curve so **every part of the slider is useful** — by driving **Spotify's own volume** through Windows UI Automation. The level you land on is Spotify's *real* volume, so it **syncs everywhere** — your phone, Connect speakers, the Windows mixer — and the Spotify client is *never* patched.
+Spotify Desktop has two everyday annoyances: its volume slider is **top‑heavy** (the bottom half does almost nothing; `80 → 100%` is a cliff), and its lyrics **take over the whole window** — then vanish the moment you minimize. **Volumify** is a tiny tray app that fixes both, **without ever patching Spotify**:
 
-> No client patching — **survives auto‑updates and keeps Spotify Lossless intact.** Syncs to your phone & Connect devices.
+- 🎚️ **A volume slider that's actually usable** — a tunable power curve that drives Spotify's *own* volume, so every part of the slider counts and the level **syncs everywhere** (your phone, Connect speakers, the Windows mixer).
+- 🎤 **Lyrics that float and follow** — a small synced window that **stays up while you browse playlists**, line‑synced and click‑to‑seek, tinted from the album art, with the *exact* words Spotify shows.
+
+> No client patching — it **survives auto‑updates and keeps Spotify Lossless intact**, and the level follows you to every device.
 
 ## ✨ See it
 
