@@ -20,7 +20,7 @@ public sealed class PresetBar : Panel
         _labels = labels;
         DoubleBuffered = true;
         ResizeRedraw = true;
-        BackColor = Color.FromArgb(20, 20, 20);
+        BackColor = Color.FromArgb(28, 27, 25); // warm near-black, matching the panel
         Cursor = Cursors.Hand;
     }
 
@@ -64,7 +64,7 @@ public sealed class PresetBar : Panel
         {
             var cell = new RectangleF(i * w + 3, 2, w - 6, Height - 4);
             bool active = i == _active;
-            Color bg = active ? Accent : i == _hover ? Color.FromArgb(50, 50, 50) : Color.FromArgb(36, 36, 36);
+            Color bg = active ? Accent : i == _hover ? Color.FromArgb(58, 55, 52) : Color.FromArgb(44, 42, 39);
             using (var path = Rounded(cell, 7))
             using (var b = new SolidBrush(bg))
                 g.FillPath(b, path);

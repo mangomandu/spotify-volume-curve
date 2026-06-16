@@ -15,7 +15,7 @@ public sealed class ControlPanelForm : Form
 
     // Cached once — these used to be reallocated on every repaint (i.e. every drag tick).
     private static readonly Font PctFont = new("Segoe UI", 21f, FontStyle.Bold);
-    private static readonly Font DbFont = new("Segoe UI", 9f);
+    private static readonly Font CaptionFont = new("Segoe UI", 8.5f);
 
     private readonly VolumeModel _model;
     private readonly Preset[] _presets;
@@ -42,7 +42,7 @@ public sealed class ControlPanelForm : Form
     {
         _model = model;
         _presets = presets;
-        _presetBar = new PresetBar(Array.ConvertAll(presets, p => p.Number));
+        _presetBar = new PresetBar(Array.ConvertAll(presets, p => p.Pill));
         _winEventProc = OnWinEvent;
 
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
@@ -115,19 +115,17 @@ public sealed class ControlPanelForm : Form
                 g.FillEllipse(warn, Width - 52, 12, 8, 8);
 
         float felt = VolumeCurve.FeltLoudness(_model.Position, _model.P); // perceived loudness — what you actually hear
-        float amp = VolumeCurve.Amplitude(_model.Position, _model.P);     // actual output amplitude → real dB
-        double db = amp > 0 ? 20 * Math.Log10(amp) : double.NegativeInfinity;
         string pct = $"{felt * 100:0}%";
-        string dbText = double.IsNegativeInfinity(db) ? "−∞ dB" : $"{db:0.0} dB";
+        string capt = Loc.T("들리는 음량", "Loudness"); // plain-language label, no dB jargon
         {
-            var sz = g.MeasureString(pct, PctFont);
-            using var wb = new SolidBrush(Theme.Accent); // the hero number, themed to match the green curve
-            g.DrawString(pct, PctFont, wb, (Width - sz.Width) / 2f, Height - 84);
+            var sz = g.MeasureString(capt, CaptionFont);
+            using var cb = new SolidBrush(Color.FromArgb(150, 145, 138));
+            g.DrawString(capt, CaptionFont, cb, (Width - sz.Width) / 2f, Height - 88);
         }
         {
-            var sz = g.MeasureString(dbText, DbFont);
-            using var sb = new SolidBrush(Color.FromArgb(140, 140, 140));
-            g.DrawString(dbText, DbFont, sb, (Width - sz.Width) / 2f, Height - 52);
+            var sz = g.MeasureString(pct, PctFont);
+            using var wb = new SolidBrush(Theme.Accent); // the hero number — what you actually hear — themed to the curve
+            g.DrawString(pct, PctFont, wb, (Width - sz.Width) / 2f, Height - 72);
         }
     }
 

@@ -10,7 +10,6 @@ public sealed class CurveGraphPanel : Panel
 {
     private const int Pad = 12;
     private static Color Accent => Theme.Accent; // shared, user-customizable
-    private static readonly Font LabelFont = new("Segoe UI", 7.5f); // cached — was reallocated each repaint
 
     private float _p = 0.5f;
     private float _position = 0.5f;
@@ -22,7 +21,7 @@ public sealed class CurveGraphPanel : Panel
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
-        BackColor = Color.FromArgb(26, 26, 26);
+        BackColor = Color.FromArgb(28, 27, 25); // warm near-black, matching the panel + lyrics window
         Cursor = Cursors.Hand;
     }
 
@@ -48,13 +47,8 @@ public sealed class CurveGraphPanel : Panel
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // Reserve a thin strip top + bottom for the axis labels.
-        var area = new Rectangle(Pad, Pad + 13, Width - 2 * Pad, Height - 2 * Pad - 26);
+        var area = new Rectangle(Pad, Pad, Width - 2 * Pad, Height - 2 * Pad);
         if (area.Width < 8 || area.Height < 8) return;
-
-        // Plot frame.
-        using (var frame = new Pen(Color.FromArgb(48, 48, 48)))
-            g.DrawRectangle(frame, area.Left, area.Top, area.Width, area.Height);
 
         // "Even" reference: a straight diagonal — felt loudness rising evenly with the slider.
         using (var lin = new Pen(Color.FromArgb(70, 70, 70)) { DashStyle = DashStyle.Dash })
@@ -82,12 +76,5 @@ public sealed class CurveGraphPanel : Panel
             g.FillEllipse(dot, mx - 4.5f, my - 4.5f, 9, 9);
         using (var ring = new Pen(Accent, 2f))
             g.DrawEllipse(ring, mx - 4.5f, my - 4.5f, 9, 9);
-
-        // Axis labels: what each direction means, kept small and out of the way.
-        using var labelBrush = new SolidBrush(Color.FromArgb(150, 150, 150));
-        g.DrawString("↑ " + Loc.T("체감 음량", "loudness"), LabelFont, labelBrush, area.Left - 2, Pad - 3);
-        string xLabel = Loc.T("슬라이더 위치", "slider") + " →";
-        float xWidth = g.MeasureString(xLabel, LabelFont).Width;
-        g.DrawString(xLabel, LabelFont, labelBrush, area.Right - xWidth + 2, area.Bottom + 5);
     }
 }

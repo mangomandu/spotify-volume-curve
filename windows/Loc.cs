@@ -36,4 +36,12 @@ public sealed record Preset(string Ko, string En, float P)
 {
     public string Label => $"{Loc.T(Ko, En)} ({P:0.0})";
     public string Number => $"{P:0.0}";
+    // Short, plain-language label for the panel pills — no exponent jargon.
+    public string Pill => P switch
+    {
+        <= 0.35f => Loc.T("리니어", "Linear"),
+        <= 0.50f => Loc.T("고름", "Even"),
+        <= 0.80f => Loc.T("살짝", "Slight"),
+        _ => Loc.T("기본", "Default"),
+    };
 }
