@@ -50,7 +50,7 @@ public sealed class ControlPanelForm : Form
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(300, 320);
+        ClientSize = new Size(360, 320); // width matches the lyrics window so the two stack into an aligned column
         MinimumSize = new Size(260, 280);
         BackColor = Bg;
         ForeColor = Color.White;
