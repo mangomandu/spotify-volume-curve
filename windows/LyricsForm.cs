@@ -361,29 +361,31 @@ public sealed class LyricsForm : Form
     private bool AlbumMode => _albumTint && !_artColor.IsEmpty;
 
     // Pin sits just left of the ✕, in the header strip. PinHit is a roomier target for the mouse.
-    private RectangleF PinBox() => new(ClientSize.Width - 56, 8, 18, 22);
+    private RectangleF PinBox() => new(ClientSize.Width - 57, 7, 19, 23);
     private RectangleF PinHit() => RectangleF.Inflate(PinBox(), 6, 5);
 
-    // A teardrop "map pin": filled when pinned (kept up), hollow outline when not (drops with Spotify).
+    // A location pin with a punched hole: solid when pinned (kept up), clean hollow outline when not (drops with Spotify).
     private void DrawPin(Graphics g, RectangleF box, bool pinned, bool hover)
     {
         float cx = box.X + box.Width / 2f;
-        float r = box.Width * 0.42f;
-        float cy = box.Y + box.Height * 0.30f;
-        float tipY = box.Y + box.Height * 0.97f;
+        float r = box.Width * 0.38f;
+        float cy = box.Y + box.Height * 0.34f;            // centre of the round head
+        float tipY = box.Y + box.Height * 0.97f;          // bottom point
         float ex = cx + r * (float)Math.Cos(50 * Math.PI / 180), ey = cy + r * (float)Math.Sin(50 * Math.PI / 180);
         float sx = cx + r * (float)Math.Cos(130 * Math.PI / 180), sy = cy + r * (float)Math.Sin(130 * Math.PI / 180);
 
-        using var path = new GraphicsPath();
-        path.AddArc(cx - r, cy - r, 2 * r, 2 * r, 130, 280); // round top + sides, gap at the bottom
+        using var path = new GraphicsPath(); // FillMode.Alternate → the inner ellipse reads as a hole
+        path.AddArc(cx - r, cy - r, 2 * r, 2 * r, 130, 280); // round head, gap at the bottom
         path.AddLine(ex, ey, cx, tipY);                      // right shoulder → tip
         path.AddLine(cx, tipY, sx, sy);                      // tip → left shoulder
         path.CloseFigure();
+        float holeR = r * 0.40f;
+        path.AddEllipse(cx - holeR, cy - holeR, holeR * 2, holeR * 2);
 
-        Color baseC = pinned ? (AlbumMode ? Color.White : Accent) : Color.FromArgb(150, 146, 140);
-        var c = Color.FromArgb(hover ? 255 : pinned ? 235 : 170, baseC);
+        Color baseC = pinned ? (AlbumMode ? Color.White : Accent) : Color.FromArgb(152, 148, 142);
+        var c = Color.FromArgb(hover ? 255 : pinned ? 240 : 175, baseC);
         if (pinned) { using var b = new SolidBrush(c); g.FillPath(b, path); }
-        else { using var pen = new Pen(c, 1.6f); g.DrawPath(pen, path); }
+        else { using var pen = new Pen(c, 1.5f) { LineJoin = LineJoin.Round }; g.DrawPath(pen, path); }
     }
 
     // Derive a deep, slightly-muted backdrop shade from the album colour so light lyrics stay readable.
