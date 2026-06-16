@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/thumbnail.png" alt="Volumify — Spotify's volume slider, fixed" width="860">
+<img src="assets/thumbnail.png" alt="Volumify — a usable volume curve and floating synced lyrics for Spotify Desktop" width="860">
 
 <br>
 
