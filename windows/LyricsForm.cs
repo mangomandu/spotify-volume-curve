@@ -57,14 +57,18 @@ public sealed class LyricsForm : Form
     private bool _pinHover;
     public event Action<bool>? PinnedChanged; // user clicked the pin → persist + mirror in the menu
 
+    private int _transHover;              // 0=none, 1=prev, 2=play/pause, 3=next — transport bar, shown when pinned
+    private bool _lastPlaying;            // so OnTick repaints the play/pause glyph when playback flips
+    private int FooterH => _pinned ? 46 : 0; // transport strip reserved at the bottom while pinned
+
     public event Action? CloseRequested;
     public event Action<Point>? DockOffsetChanged; // user dragged while docked → persist the new offset
     public Func<string, long, CancellationToken, Task<string?>>? TrackIdProvider; // optional: (title, durationMs, ct) → exact Spotify track id
     public Func<CancellationToken, Task<NowPlaying.TrackInfo?>>? NextTrackProvider; // optional: next queued track → prefetch its lyrics
 
     public void SetDockOffset(Point? offset) => _dock.SetOffset(offset);
-    public void SetPinned(bool pinned) { _pinned = pinned; _dock.SetHideWhenAbsent(!pinned); Invalidate(); }
-    private void TogglePin() { _pinned = !_pinned; _dock.SetHideWhenAbsent(!_pinned); Invalidate(); PinnedChanged?.Invoke(_pinned); }
+    public void SetPinned(bool pinned) { _pinned = pinned; _dock.SetHideWhenAbsent(!pinned); _layoutDirty = true; Invalidate(); }
+    private void TogglePin() { _pinned = !_pinned; _dock.SetHideWhenAbsent(!_pinned); _layoutDirty = true; Invalidate(); PinnedChanged?.Invoke(_pinned); }
     public void SetAlbumTint(bool on) { if (_albumTint == on) return; _albumTint = on; Invalidate(); }
 
     public LyricsForm(NowPlaying np)
@@ -222,6 +226,7 @@ public sealed class LyricsForm : Form
     private void OnTick()
     {
         bool needPaint = false;
+        if (_pinned && _np.IsPlaying != _lastPlaying) { _lastPlaying = _np.IsPlaying; needPaint = true; } // play/pause glyph
 
         if (_lyrics.Synced && _lyrics.Lines.Count > 0)
         {
@@ -237,7 +242,7 @@ public sealed class LyricsForm : Form
 
             if (!_userScrolled && _rows.Count > 0)
             {
-                float vpH = ClientSize.Height - HeaderH - Pad;
+                float vpH = ClientSize.Height - HeaderH - FooterH - Pad;
                 float centerY = _activeIdx >= 0 && _activeIdx < _rows.Count
                     ? _rows[_activeIdx].top + _rows[_activeIdx].height / 2f
                     : 0;
@@ -273,7 +278,7 @@ public sealed class LyricsForm : Form
     {
         if (_rows.Count == 0) { _targetScroll = 0; return; }
         float content = _rows[^1].top + _rows[^1].height;
-        float vpH = ClientSize.Height - HeaderH - Pad;
+        float vpH = ClientSize.Height - HeaderH - FooterH - Pad;
         float max = Math.Max(0, content - vpH + Pad);
         _targetScroll = Math.Clamp(_targetScroll, 0, max);
     }
@@ -284,6 +289,13 @@ public sealed class LyricsForm : Form
         base.OnMouseClick(e);
         if (e.Button != MouseButtons.Left) return;
         if (PinHit().Contains(e.Location)) { TogglePin(); return; } // pin/unpin (keep up when Spotify is minimized)
+        if (_pinned)
+        {
+            var (pv, pl, nx) = TransportRects();
+            if (pv.Contains(e.Location)) { _np.SkipPrevious(); Invalidate(); return; }
+            if (pl.Contains(e.Location)) { _np.TogglePlayPause(); Invalidate(); return; }
+            if (nx.Contains(e.Location)) { _np.SkipNext(); Invalidate(); return; }
+        }
         if (_canSearch && _searchBtnRect.Contains(e.Location)) { OpenWebSearch(); return; } // not-found → web search
         if (!_lyrics.Synced) return;
         int r = RowAt(e.Location);
@@ -305,8 +317,16 @@ public sealed class LyricsForm : Form
         bool onPin = PinHit().Contains(e.Location);
         if (onPin != _pinHover) { _pinHover = onPin; Invalidate(); }
 
+        int th = 0;
+        if (_pinned)
+        {
+            var (pv, pl, nx) = TransportRects();
+            if (pv.Contains(e.Location)) th = 1; else if (pl.Contains(e.Location)) th = 2; else if (nx.Contains(e.Location)) th = 3;
+        }
+        if (th != _transHover) { _transHover = th; Invalidate(); }
+
         int r = (_lyrics.Synced && e.Y >= HeaderH) ? RowAt(e.Location) : -1;
-        bool clickable = onPin || (r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0) || onSearch;
+        bool clickable = onPin || th > 0 || (r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0) || onSearch;
         Cursor = clickable ? Cursors.Hand : Cursors.Default;
         if (r != _hoverRow) { _hoverRow = r; Invalidate(); }
     }
@@ -315,15 +335,15 @@ public sealed class LyricsForm : Form
     {
         base.OnMouseLeave(e);
         Cursor = Cursors.Default;
-        bool inv = _hoverRow != -1 || _searchHover;
-        _hoverRow = -1; _searchHover = false;
+        bool inv = _hoverRow != -1 || _searchHover || _pinHover || _transHover != 0;
+        _hoverRow = -1; _searchHover = false; _pinHover = false; _transHover = 0;
         if (inv) Invalidate();
     }
 
     /// <summary>Row index at a client point (or -1). Mirrors the Y math in OnPaint.</summary>
     private int RowAt(Point p)
     {
-        if (_rows.Count == 0 || p.Y < HeaderH) return -1;
+        if (_rows.Count == 0 || p.Y < HeaderH || p.Y >= ClientSize.Height - FooterH) return -1;
         float baseY = HeaderH + Pad - _scroll;
         for (int r = 0; r < _rows.Count; r++)
         {
@@ -388,6 +408,54 @@ public sealed class LyricsForm : Form
         else { using var pen = new Pen(c, 1.5f) { LineJoin = LineJoin.Round }; g.DrawPath(pen, path); }
     }
 
+    // Transport bar (prev / play-pause / next), shown only while pinned — Spotify may be minimized then.
+    private (RectangleF prev, RectangleF play, RectangleF next) TransportRects()
+    {
+        float cy = ClientSize.Height - FooterH / 2f;
+        float cx = ClientSize.Width / 2f;
+        const float gap = 48f, s = 30f;
+        RectangleF R(float x) => new(x - s / 2f, cy - s / 2f, s, s);
+        return (R(cx - gap), R(cx), R(cx + gap));
+    }
+
+    private Color TransColor(bool hover, bool center)
+    {
+        if (hover) return AlbumMode ? Color.White : Accent;
+        return Color.FromArgb(center ? 240 : 205, AlbumMode ? Color.White : Color.FromArgb(228, 225, 219));
+    }
+
+    private void DrawTransport(Graphics g)
+    {
+        var (pv, pl, nx) = TransportRects();
+        float top = ClientSize.Height - FooterH;
+        using (var sep = new Pen(Color.FromArgb(28, 255, 255, 255)))
+            g.DrawLine(sep, 16, top, ClientSize.Width - 16, top);
+
+        using (var b = new SolidBrush(TransColor(_transHover == 1, false))) // previous |◀
+        {
+            float cx = pv.X + pv.Width / 2f, cy = pv.Y + pv.Height / 2f, hh = pv.Height * 0.22f;
+            g.FillRectangle(b, cx - 8f, cy - hh, 2.2f, 2 * hh);
+            g.FillPolygon(b, new[] { new PointF(cx + 6f, cy - hh), new PointF(cx + 6f, cy + hh), new PointF(cx - 4f, cy) });
+        }
+        using (var b = new SolidBrush(TransColor(_transHover == 2, true))) // play ▶ / pause ⏸ (center)
+        {
+            float cx = pl.X + pl.Width / 2f, cy = pl.Y + pl.Height / 2f, hh = pl.Height * 0.27f;
+            if (_np.IsPlaying)
+            {
+                const float bw = 3.2f, gp = 3.2f;
+                g.FillRectangle(b, cx - gp / 2f - bw, cy - hh, bw, 2 * hh);
+                g.FillRectangle(b, cx + gp / 2f, cy - hh, bw, 2 * hh);
+            }
+            else g.FillPolygon(b, new[] { new PointF(cx - 5f, cy - hh), new PointF(cx - 5f, cy + hh), new PointF(cx + 7f, cy) });
+        }
+        using (var b = new SolidBrush(TransColor(_transHover == 3, false))) // next ▶|
+        {
+            float cx = nx.X + nx.Width / 2f, cy = nx.Y + nx.Height / 2f, hh = nx.Height * 0.22f;
+            g.FillPolygon(b, new[] { new PointF(cx - 6f, cy - hh), new PointF(cx - 6f, cy + hh), new PointF(cx + 4f, cy) });
+            g.FillRectangle(b, cx + 6f, cy - hh, 2.2f, 2 * hh);
+        }
+    }
+
     // Derive a deep, slightly-muted backdrop shade from the album colour so light lyrics stay readable.
     private static Color Backdrop(Color c, float keep, int lift)
     {
@@ -433,8 +501,9 @@ public sealed class LyricsForm : Form
                 g.DrawString(Ellipsize(g, artist, ArtistFont, ClientSize.Width - 96), ArtistFont, sb, 16, 22);
         }
         DrawPin(g, PinBox(), _pinned, _pinHover);
+        if (_pinned) DrawTransport(g);
 
-        var vp = new Rectangle(0, HeaderH, ClientSize.Width, ClientSize.Height - HeaderH);
+        var vp = new Rectangle(0, HeaderH, ClientSize.Width, ClientSize.Height - HeaderH - FooterH);
         if (vp.Height < 10) return;
 
         if (_lyrics.Lines.Count == 0)

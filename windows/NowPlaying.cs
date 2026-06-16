@@ -212,6 +212,11 @@ public sealed class NowPlaying : IDisposable
         catch { }
     }
 
+    // Transport controls via SMTC — work even when Spotify is minimized (same channel as the media keys).
+    public async void SkipNext() { try { var s = _session; if (s != null) await s.TrySkipNextAsync(); } catch { } }
+    public async void SkipPrevious() { try { var s = _session; if (s != null) await s.TrySkipPreviousAsync(); } catch { } }
+    public async void TogglePlayPause() { try { var s = _session; if (s != null) await s.TryTogglePlayPauseAsync(); } catch { } }
+
     public void Dispose()
     {
         _disposed = true;
