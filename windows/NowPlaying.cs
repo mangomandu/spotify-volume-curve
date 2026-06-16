@@ -125,9 +125,18 @@ public sealed class NowPlaying : IDisposable
         try
         {
             var tl = s.GetTimelineProperties();
+            // SMTC's Position is a snapshot taken at LastUpdatedTime — Spotify only pushes a new one ~once a
+            // second, so the raw value is often hundreds of ms stale. Extrapolate it to "now" (while playing)
+            // so the synced highlight tracks the real audio instead of stepping a beat behind each poll.
+            double ageMs = 0;
+            if (_playing)
+            {
+                ageMs = (DateTimeOffset.Now - tl.LastUpdatedTime).TotalMilliseconds;
+                if (ageMs < 0 || ageMs > 5000) ageMs = 0; // ignore clock skew / huge gaps (e.g. just after a seek)
+            }
             lock (_gate)
             {
-                _baseMs = (long)tl.Position.TotalMilliseconds;
+                _baseMs = (long)(tl.Position.TotalMilliseconds + ageMs);
                 _baseTick = Environment.TickCount64;
                 _durMs = (long)tl.EndTime.TotalMilliseconds;
             }

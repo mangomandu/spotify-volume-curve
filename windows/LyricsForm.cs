@@ -16,7 +16,7 @@ public sealed class LyricsForm : Form
     private static readonly Color TextDim = Color.FromArgb(150, 145, 138);
     private const int HeaderH = 38;
     private const int Pad = 18;
-    private const int HighlightLeadMs = 260; // highlight each line a touch early — SMTC position + output buffering otherwise reads as "a beat late"
+    private const int HighlightLeadMs = 130; // small perceptual lead; the real-time sync now comes from extrapolating SMTC's position, not this
 
     private static readonly Font LineFont = new("Segoe UI Semibold", 13.5f);             // non-active lines: soft semibold
     private static readonly Font LineFontActive = new("Segoe UI", 13.5f, FontStyle.Bold); // current line: heavier, Spotify-style
@@ -53,13 +53,18 @@ public sealed class LyricsForm : Form
     private bool _albumTint = true;      // tint the backdrop from album art, Spotify-style
     private Color _artColor = Color.Empty;
 
+    private bool _pinned;                 // pinned → stay up when Spotify is minimized; else drop with it
+    private bool _pinHover;
+    public event Action<bool>? PinnedChanged; // user clicked the pin → persist + mirror in the menu
+
     public event Action? CloseRequested;
     public event Action<Point>? DockOffsetChanged; // user dragged while docked → persist the new offset
     public Func<string, long, CancellationToken, Task<string?>>? TrackIdProvider; // optional: (title, durationMs, ct) → exact Spotify track id
     public Func<CancellationToken, Task<NowPlaying.TrackInfo?>>? NextTrackProvider; // optional: next queued track → prefetch its lyrics
 
     public void SetDockOffset(Point? offset) => _dock.SetOffset(offset);
-    public void SetKeepWhenMinimized(bool keep) => _dock.SetHideWhenAbsent(!keep);
+    public void SetPinned(bool pinned) { _pinned = pinned; _dock.SetHideWhenAbsent(!pinned); Invalidate(); }
+    private void TogglePin() { _pinned = !_pinned; _dock.SetHideWhenAbsent(!_pinned); Invalidate(); PinnedChanged?.Invoke(_pinned); }
     public void SetAlbumTint(bool on) { if (_albumTint == on) return; _albumTint = on; Invalidate(); }
 
     public LyricsForm(NowPlaying np)
@@ -278,6 +283,7 @@ public sealed class LyricsForm : Form
     {
         base.OnMouseClick(e);
         if (e.Button != MouseButtons.Left) return;
+        if (PinHit().Contains(e.Location)) { TogglePin(); return; } // pin/unpin (keep up when Spotify is minimized)
         if (_canSearch && _searchBtnRect.Contains(e.Location)) { OpenWebSearch(); return; } // not-found → web search
         if (!_lyrics.Synced) return;
         int r = RowAt(e.Location);
@@ -296,8 +302,11 @@ public sealed class LyricsForm : Form
         bool onSearch = _canSearch && _searchBtnRect.Contains(e.Location);
         if (onSearch != _searchHover) { _searchHover = onSearch; Invalidate(); }
 
+        bool onPin = PinHit().Contains(e.Location);
+        if (onPin != _pinHover) { _pinHover = onPin; Invalidate(); }
+
         int r = (_lyrics.Synced && e.Y >= HeaderH) ? RowAt(e.Location) : -1;
-        bool clickable = (r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0) || onSearch;
+        bool clickable = onPin || (r >= 0 && _lyrics.Lines[_rows[r].line].TimeMs >= 0) || onSearch;
         Cursor = clickable ? Cursors.Hand : Cursors.Default;
         if (r != _hoverRow) { _hoverRow = r; Invalidate(); }
     }
@@ -351,6 +360,32 @@ public sealed class LyricsForm : Form
 
     private bool AlbumMode => _albumTint && !_artColor.IsEmpty;
 
+    // Pin sits just left of the ✕, in the header strip. PinHit is a roomier target for the mouse.
+    private RectangleF PinBox() => new(ClientSize.Width - 56, 8, 18, 22);
+    private RectangleF PinHit() => RectangleF.Inflate(PinBox(), 6, 5);
+
+    // A teardrop "map pin": filled when pinned (kept up), hollow outline when not (drops with Spotify).
+    private void DrawPin(Graphics g, RectangleF box, bool pinned, bool hover)
+    {
+        float cx = box.X + box.Width / 2f;
+        float r = box.Width * 0.42f;
+        float cy = box.Y + box.Height * 0.30f;
+        float tipY = box.Y + box.Height * 0.97f;
+        float ex = cx + r * (float)Math.Cos(50 * Math.PI / 180), ey = cy + r * (float)Math.Sin(50 * Math.PI / 180);
+        float sx = cx + r * (float)Math.Cos(130 * Math.PI / 180), sy = cy + r * (float)Math.Sin(130 * Math.PI / 180);
+
+        using var path = new GraphicsPath();
+        path.AddArc(cx - r, cy - r, 2 * r, 2 * r, 130, 280); // round top + sides, gap at the bottom
+        path.AddLine(ex, ey, cx, tipY);                      // right shoulder → tip
+        path.AddLine(cx, tipY, sx, sy);                      // tip → left shoulder
+        path.CloseFigure();
+
+        Color baseC = pinned ? (AlbumMode ? Color.White : Accent) : Color.FromArgb(150, 146, 140);
+        var c = Color.FromArgb(hover ? 255 : pinned ? 235 : 170, baseC);
+        if (pinned) { using var b = new SolidBrush(c); g.FillPath(b, path); }
+        else { using var pen = new Pen(c, 1.6f); g.DrawPath(pen, path); }
+    }
+
     // Derive a deep, slightly-muted backdrop shade from the album colour so light lyrics stay readable.
     private static Color Backdrop(Color c, float keep, int lift)
     {
@@ -391,10 +426,11 @@ public sealed class LyricsForm : Form
         {
             string title = _track?.Title ?? "Volumify";
             string artist = _track?.Artist ?? "";
-            g.DrawString(Ellipsize(g, title, HeaderFont, ClientSize.Width - 70), HeaderFont, tb, 16, 8);
+            g.DrawString(Ellipsize(g, title, HeaderFont, ClientSize.Width - 96), HeaderFont, tb, 16, 8);
             if (artist.Length > 0)
-                g.DrawString(Ellipsize(g, artist, ArtistFont, ClientSize.Width - 70), ArtistFont, sb, 16, 22);
+                g.DrawString(Ellipsize(g, artist, ArtistFont, ClientSize.Width - 96), ArtistFont, sb, 16, 22);
         }
+        DrawPin(g, PinBox(), _pinned, _pinHover);
 
         var vp = new Rectangle(0, HeaderH, ClientSize.Width, ClientSize.Height - HeaderH);
         if (vp.Height < 10) return;
@@ -513,6 +549,7 @@ public sealed class LyricsForm : Form
         if (r) return HTRIGHT;
         if (t) return HTTOP;
         if (b) return HTBOTTOM;
+        if (PinHit().Contains(p)) return HTCLIENT; // the pin sits in the header strip but must take clicks, not drag
         if (p.Y < HeaderH) return HTCAPTION; // drag by the header
         return HTCLIENT;
     }

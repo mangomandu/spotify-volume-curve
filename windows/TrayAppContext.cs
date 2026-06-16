@@ -110,7 +110,8 @@ public sealed class TrayAppContext : ApplicationContext
         };
         if (_settings.HasLyricsDockOffset)
             _lyricsForm.SetDockOffset(new Point(_settings.LyricsDockOffsetX, _settings.LyricsDockOffsetY));
-        _lyricsForm.SetKeepWhenMinimized(_settings.LyricsKeepWhenMinimized);
+        _lyricsForm.SetPinned(_settings.LyricsKeepWhenMinimized);
+        _lyricsForm.PinnedChanged += OnLyricsPinnedChanged; // pin on the window ↔ menu toggle stay in sync
         _lyricsForm.SetAlbumTint(_settings.LyricsAlbumTint);
         _lyricsForm.TrackIdProvider = (title, dur, ct) => _spotifyAuth.IsLinked ? _spotifyAuth.GetCurrentTrackIdAsync(title, dur, ct) : Task.FromResult<string?>(null);
         _lyricsForm.NextTrackProvider = async ct =>
@@ -286,7 +287,7 @@ public sealed class TrayAppContext : ApplicationContext
         _popupItems.Add(overlayPopupItem);
         settings.DropDownItems.Add(overlayPopupItem);
 
-        _keepItem = new ToolStripMenuItem(Loc.T("최소화해도 가사 유지", "Keep lyrics when Spotify is minimized"), null, (_, _) => ToggleLyricsKeep()) { Checked = _settings.LyricsKeepWhenMinimized };
+        _keepItem = new ToolStripMenuItem(Loc.T("가사 고정 (핀) · 최소화해도 유지", "Pin lyrics (keep when minimized)"), null, (_, _) => ToggleLyricsKeep()) { Checked = _settings.LyricsKeepWhenMinimized };
         settings.DropDownItems.Add(_keepItem);
 
         _albumTintItem = new ToolStripMenuItem(Loc.T("앨범 색으로 가사 배경", "Tint lyrics from album art"), null, (_, _) => ToggleLyricsAlbumTint()) { Checked = _settings.LyricsAlbumTint };
@@ -323,7 +324,15 @@ public sealed class TrayAppContext : ApplicationContext
     {
         _settings.LyricsKeepWhenMinimized = !_settings.LyricsKeepWhenMinimized;
         _keepItem.Checked = _settings.LyricsKeepWhenMinimized;
-        _lyricsForm.SetKeepWhenMinimized(_settings.LyricsKeepWhenMinimized);
+        _lyricsForm.SetPinned(_settings.LyricsKeepWhenMinimized);
+        SettingsStore.Save(_settings);
+    }
+
+    // The window's pin was clicked → mirror it into the setting + the menu checkbox.
+    private void OnLyricsPinnedChanged(bool pinned)
+    {
+        _settings.LyricsKeepWhenMinimized = pinned;
+        _keepItem.Checked = pinned;
         SettingsStore.Save(_settings);
     }
 
