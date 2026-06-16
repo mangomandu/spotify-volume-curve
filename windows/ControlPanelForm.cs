@@ -14,7 +14,7 @@ public sealed class ControlPanelForm : Form
     private const int HeaderH = 32;
 
     // Cached once — these used to be reallocated on every repaint (i.e. every drag tick).
-    private static readonly Font PctFont = new("Segoe UI", 21f, FontStyle.Bold);
+    private static readonly Font PctFont = new("Segoe UI", 17f, FontStyle.Bold);
     private static readonly Font CaptionFont = new("Segoe UI", 8.5f);
 
     private readonly VolumeModel _model;
@@ -60,7 +60,7 @@ public sealed class ControlPanelForm : Form
         _close.Click += (_, _) => { _userHidden = true; Hide(); };
 
         _graph.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        _graph.SetBounds(14, HeaderH, ClientSize.Width - 28, ClientSize.Height - HeaderH - 92);
+        _graph.SetBounds(14, HeaderH, ClientSize.Width - 28, ClientSize.Height - HeaderH - 100);
         _graph.PositionPicked += pos => _model.SetPosition(pos);
 
         _presetBar.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -120,12 +120,12 @@ public sealed class ControlPanelForm : Form
         {
             var sz = g.MeasureString(capt, CaptionFont);
             using var cb = new SolidBrush(Color.FromArgb(150, 145, 138));
-            g.DrawString(capt, CaptionFont, cb, (Width - sz.Width) / 2f, Height - 88);
+            g.DrawString(capt, CaptionFont, cb, (Width - sz.Width) / 2f, Height - 92);
         }
         {
             var sz = g.MeasureString(pct, PctFont);
             using var wb = new SolidBrush(Theme.Accent); // the hero number — what you actually hear — themed to the curve
-            g.DrawString(pct, PctFont, wb, (Width - sz.Width) / 2f, Height - 72);
+            g.DrawString(pct, PctFont, wb, (Width - sz.Width) / 2f, Height - 76);
         }
     }
 
