@@ -103,6 +103,29 @@ public static class LyricsProvider
         return result;
     }
 
+    /// <summary>Cache-only lookup (no network) — the "was this prefetched?" fast path. Null if absent.</summary>
+    public static LyricsResult? PeekCache(string key)
+    {
+        lock (_cacheGate) if (_cache.TryGetValue(key, out var hit)) return hit.Found ? hit : null;
+        var disk = ReadDisk(key);
+        if (disk is { Found: true }) { lock (_cacheGate) _cache[key] = disk; return disk; }
+        return null;
+    }
+
+    /// <summary>
+    /// Fetch a track's lyrics ahead of time and cache them under BOTH its id key and its plain artist+title key,
+    /// so when it becomes the current track the lookup is instant — no Spotify id round trip, no Musixmatch call.
+    /// </summary>
+    public static async Task PrefetchAsync(NowPlaying.TrackInfo withId)
+    {
+        if (withId.IsEmpty) return;
+        var res = await GetAsync(withId, CancellationToken.None);   // exact lyrics, cached under the id key
+        if (!res.Found) return;
+        string titleKey = new NowPlaying.TrackInfo(withId.Artist, withId.Title, withId.Album, withId.DurationMs).Key;
+        lock (_cacheGate) _cache[titleKey] = res;
+        var k = titleKey; var r = res; _ = Task.Run(() => WriteDisk(k, r));
+    }
+
     // ---------- persistent (disk) cache ----------
     private static LyricsResult? ReadDisk(string key)
     {

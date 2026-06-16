@@ -1,0 +1,42 @@
+name: Release
+
+# Push a tag like v0.2.6 and this builds the single-file, self-contained
+# Volumify.exe and publishes it as a GitHub release for that tag.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish single-file self-contained exe
+        working-directory: windows
+        run: >
+          dotnet publish -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+
+      - name: Stage artifact as Volumify.exe
+        shell: pwsh
+        run: |
+          $exe = "windows/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/Volumify.exe"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $exe dist/Volumify.exe
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Volumify.exe
+          generate_release_notes: true

@@ -156,12 +156,22 @@ public sealed class LyricsForm : Form
         LyricsResult res;
         try
         {
-            if (TrackIdProvider != null)
+            // Fast path: a prefetch (or earlier play) already cached this track under its plain title key →
+            // show instantly, skipping the Spotify-API id round trip entirely. This is what makes it feel like Spotify.
+            var peek = LyricsProvider.PeekCache(track.Key);
+            if (peek is { Found: true })
             {
-                var id = await TrackIdProvider(track.Title, track.DurationMs, cts.Token);
-                if (!string.IsNullOrEmpty(id)) track = track with { SpotifyId = id }; // exact Spotify match (verified same track)
+                res = peek;
             }
-            res = await LyricsProvider.GetAsync(track, cts.Token);
+            else
+            {
+                if (TrackIdProvider != null)
+                {
+                    var id = await TrackIdProvider(track.Title, track.DurationMs, cts.Token);
+                    if (!string.IsNullOrEmpty(id)) track = track with { SpotifyId = id }; // exact Spotify match (verified same track)
+                }
+                res = await LyricsProvider.GetAsync(track, cts.Token);
+            }
         }
         catch { res = LyricsResult.None; }
         if (cts.IsCancellationRequested || IsDisposed || !ReferenceEquals(_fetchCts, cts)) return;
@@ -183,7 +193,7 @@ public sealed class LyricsForm : Form
         try
         {
             var next = await NextTrackProvider!(CancellationToken.None);
-            if (next != null && !next.IsEmpty) _ = LyricsProvider.GetAsync(next, CancellationToken.None); // fetch + cache in the background
+            if (next != null && !next.IsEmpty) _ = LyricsProvider.PrefetchAsync(next); // cache under BOTH id + title keys → instant on play
         }
         catch { }
     }
